@@ -14,6 +14,7 @@ results from offline evidence; it is not a general compatibility certification.
 | Simulation and CLI | Hardware-free demo and read-only diagnostics are available. |
 | Fresh root review | **273 offline tests passed** and **119 local publication artifact files were verified** before this housekeeping pass. These are dated receipts, not a claim that every later revision has run the same checks. |
 | Standalone housekeeping | **278 tests passed**, local and portable hosted production builds passed. A relocated browser demo rendered and its head control responded. The production webcam worker initialized its real model without capture; no robot, camera or microphone was used. |
+| Static source projection | A live check found that Pages reserves `.github/`. The source manifest now binds a `github/` website projection while the repository and ZIP retain canonical CI paths. Version **0.1.2** preserves the earlier 0.1.1 archive identity. |
 | Live hosted verification | The live HTTPS check timed out. Current live deployment consistency was not established by that attempt. |
 
 The daemon 1.11 candidate requires attended browser/robot transport, telemetry,

@@ -88,9 +88,11 @@ test('export writes a verifiable complete source release and preserves website f
     const manifest=JSON.parse(await fs.readFile(path.join(siteRoot,'reachy-mini/source/SOURCE_MANIFEST.json'),'utf8'));
     assert.equal(manifest.files.length,PUBLIC_FILES.length);
     for(const file of manifest.files) {
-      const bytes=await fs.readFile(path.join(siteRoot,'reachy-mini/source',file.path));
+      const bytes=await fs.readFile(path.join(siteRoot,'reachy-mini/source',file.sitePath));
       assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),file.sha256);
     }
+    const workflow = manifest.files.find(file => file.path === '.github/workflows/checks.yml');
+    assert.equal(workflow.sitePath, 'github/workflows/checks.yml');
     const archive=await fs.readFile(path.join(siteRoot,'reachy-mini/downloads',result.archive));
     assert.equal(crypto.createHash('sha256').update(archive).digest('hex'),result.sha256);
     assert.equal(result.sourceFiles,PUBLIC_FILES.length+1);

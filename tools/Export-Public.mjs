@@ -35,6 +35,9 @@ export const PUBLIC_FILES = Object.freeze([
 ].sort());
 
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+// GitHub Pages reserves .github paths even beneath a no-Jekyll source export.
+// Keep canonical repository paths in the ZIP and an explicit static projection.
+const sitePath = name => name.startsWith('.github/') ? `github/${name.slice('.github/'.length)}` : name;
 export function auditPublicFile(name, bytes) {
   if (name.includes('\\') || name.startsWith('/') || name.split('/').some(part => part === '..' || part === '.')) throw Error('Unsafe publication path');
   if (/(?:^|\/)(?:local|node_modules|dist|\.git|\.env|VALIDATION\.md)(?:\/|$)/i.test(name) ||
@@ -141,7 +144,7 @@ export async function exportPublic({ appRoot, siteRoot, sourceRevision = null })
     sourceRevision, sourceTreeSha256,
     originalCodeLicense: 'MIT', dependencyLicenses: 'THIRD_PARTY_NOTICES.md',
     exclusions: ['private configuration and evidence','Git history','installed dependencies','generated model/WASM binaries','source CAD and robot meshes'],
-    files: sourceFiles };
+    files: sourceFiles.map(file => ({ ...file, sitePath: sitePath(file.path) })) };
   entries.push({ name:'SOURCE_MANIFEST.json', bytes:Buffer.from(JSON.stringify(manifest,null,2)+'\n') });
   const zip = sourceZip(entries.map(entry => ({ name:`${prefix}/${entry.name}`, bytes:entry.bytes })));
   const product = childPath(siteRoot,'reachy-mini'), source = childPath(product,'source'), downloads = childPath(product,'downloads');
@@ -162,7 +165,7 @@ export async function exportPublic({ appRoot, siteRoot, sourceRevision = null })
     if (hash(prior) !== sha256) throw Error(`Release ${metadata.version} already exists with different bytes; increment the version`);
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   await fs.rm(staging,{recursive:true,force:true}); await fs.mkdir(staging);
-  for (const entry of entries) { const file = childPath(staging,entry.name); await fs.mkdir(path.dirname(file),{recursive:true}); await fs.writeFile(file,entry.bytes); }
+  for (const entry of entries) { const file = childPath(staging,sitePath(entry.name)); await fs.mkdir(path.dirname(file),{recursive:true}); await fs.writeFile(file,entry.bytes); }
   await fs.rm(source,{recursive:true,force:true}); await fs.rename(staging,source);
   await fs.mkdir(downloads,{recursive:true});
   if (!(await fs.realpath(downloads)).startsWith(siteRoot + path.sep)) throw Error('Download directory escaped its root');

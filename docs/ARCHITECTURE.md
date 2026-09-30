@@ -43,6 +43,9 @@ opt-in command.
 checks privacy and emits hashes. Release manifests record the clean Git HEAD as
 `sourceRevision` and the reviewed source inventory hash as `sourceTreeSha256`.
 Reusing a release version with different bytes fails before replacement.
+The manifest binds canonical repository paths and static `sitePath` projections;
+CI files use `github/workflows/` on the website because Pages reserves `.github/`.
+ZIP paths retain the normal `.github/` layout.
 It excludes Git history, configuration, private
 evidence, dependency installations and generated CAD. See [contributing](../CONTRIBUTING.md)
 and [status](STATUS.md) for review and verification boundaries.

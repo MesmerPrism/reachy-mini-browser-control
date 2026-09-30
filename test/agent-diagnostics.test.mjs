@@ -159,6 +159,22 @@ test('remote site verification uses only explicit bounded sequential GETs', asyn
   for (const call of calls) { assert.equal(call.options.method, 'GET'); assert.equal(call.options.redirect, 'error'); assert.ok(call.options.signal instanceof AbortSignal); }
 });
 
+test('site verification uses explicit static paths while validating canonical source paths', async () => {
+  const fixture = publication();
+  const bytes = fixture.files.get('source/README.md');
+  fixture.files.delete('source/README.md'); fixture.files.set('source/github/workflows/checks.yml', bytes);
+  fixture.source.files[0].path = '.github/workflows/checks.yml';
+  fixture.source.files[0].sitePath = 'github/workflows/checks.yml'; fixture.refresh();
+  const calls = [];
+  assert.equal((await verifySite({ url: 'https://site.invalid/reachy-mini/', fetchImpl: mockSite(fixture.files, calls) })).filesVerified, 4);
+  assert.ok(calls.some(call => new URL(call.url).pathname.endsWith('/source/github/workflows/checks.yml')));
+  for (const [key, value] of [['sitePath', '../private-secret'], ['path', '../private-secret']]) {
+    const previous = fixture.source.files[0][key]; fixture.source.files[0][key] = value; fixture.refresh();
+    await assert.rejects(verifySite({ url: 'https://site.invalid/reachy-mini/', fetchImpl: mockSite(fixture.files) }), errorCode('manifest'));
+    fixture.source.files[0][key] = previous; fixture.refresh();
+  }
+});
+
 test('site verification fails at the first declared byte/hash mismatch', async () => {
   for (const mutation of [fixture => fixture.files.set('index.html', Buffer.from('wrong')), fixture => { fixture.build.files[0].sha256 = '0'.repeat(64); fixture.refresh(); }]) {
     const fixture = publication(), calls = []; mutation(fixture);
