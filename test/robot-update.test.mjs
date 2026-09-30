@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRobotUpdateClient } from '../src/robot-update.mjs';
+
+const daemon={version:'1.2.11',wireless_version:true,state:'stopped',error:null};
+const availability={update:{reachy_mini:{is_available:true,current_version:'1.2.11',available_version:'1.11.0'}}};
+const jobId='12345678-1234-1234-1234-123456789abc';
+function fixture(values,options={}) {const calls=[];const client=createRobotUpdateClient({host:'reachy-mini.local',fetchImpl:async(url,init)=>{calls.push({url,init});const value=values.shift();if(value instanceof Error)throw value;return value instanceof Response?value:new Response(JSON.stringify(value));},...options});return{client,calls};}
+const posts=calls=>calls.filter(call=>call.init.method==='POST');
+test('read check offers stable version with privacy options and no writes',async()=>{
+  const {client,calls}=fixture([daemon,availability]);assert.equal(calls.length,0);await client.check();assert.equal(client.snapshot().ready,true);assert.equal(client.snapshot().offer,'1.11.0');assert.equal(posts(calls).length,0);
+  assert.deepEqual(calls.map(c=>new URL(c.url).pathname),['/api/daemon/status','/update/available']);
+  for(const {init} of calls){assert.equal(init.credentials,'omit');assert.equal(init.redirect,'error');assert.equal(init.cache,'no-store');assert.equal(init.referrerPolicy,'no-referrer');}
+});
+test('unsafe addresses and invalid time bounds never create a client',()=>{for(const host of ['example.com','http://reachy-mini.local','reachy-mini.local/path',[8,8,8,8].join('.')])assert.throws(()=>createRobotUpdateClient({host}),{code:'host'});for(const host of ['localhost','127.0.0.1','reachy-mini.local',[192,168,1,2].join('.')])assert.doesNotThrow(()=>createRobotUpdateClient({host}));assert.throws(()=>createRobotUpdateClient({host:'localhost',timeoutMs:Infinity}));});
+test('unknown software, active motion and error states cannot offer updates',async()=>{
+  for(const change of [{version:'1.11.0'},{wireless_version:false},{state:'running'},{error:'private failure'}]){const{client,calls}=fixture([{...daemon,...change}]);await client.check();assert.equal(client.snapshot().ready,false);await assert.rejects(client.start(),{code:'guard'});assert.equal(posts(calls).length,0);assert.equal(JSON.stringify(client.snapshot()).includes('private failure'),false);}
+});
+test('malformed availability and prerelease targets never permit a write',async()=>{
+  for(const change of [{available_version:'1.12.0rc1'},{current_version:'1.10.0'},{is_available:'true'},{available_version:'unknown'},{is_available:false}]){const{client,calls}=fixture([daemon,{update:{reachy_mini:{...availability.update.reachy_mini,...change}}}]);await assert.rejects(client.check(),{code:'protocol'});await assert.rejects(client.start(),{code:'guard'});assert.equal(posts(calls).length,0);}
+});
+test('check timeout is bounded and leaves no offer',async()=>{const client=createRobotUpdateClient({host:'localhost',timeoutMs:10,fetchImpl:()=>new Promise(()=>{})});await assert.rejects(client.check(),{code:'transport'});assert.equal(client.snapshot().ready,false);assert.equal(client.snapshot().phase,'unavailable');assert.equal(client.snapshot().active,false);});
+test('start requires prior offer and rechecks stopped state before writing',async()=>{const{client,calls}=fixture([daemon,availability,{...daemon,state:'running'}]);await assert.rejects(client.start(),{code:'guard'});await client.check();await assert.rejects(client.start(),{code:'guard'});assert.equal(posts(calls).length,0);assert.equal(client.snapshot().attempted,false);});
+test('attempt recorded before exactly one explicit stable POST and cannot replay',async()=>{
+  const observations=[];const{client,calls}=fixture([daemon,availability,daemon,{job_id:jobId}],{onChange:value=>observations.push(value)});await client.check();await client.start();assert.equal(posts(calls).length,1);assert.ok(posts(calls)[0].url.endsWith('/update/start?pre_release=false'));assert.ok(observations.some(value=>value.attempted && value.phase==='unknown'));assert.equal(client.snapshot().phase,'submitted');await assert.rejects(client.start(),{code:'attempted'});await assert.rejects(client.check(),{code:'attempted'});assert.equal(posts(calls).length,1);
+});
+test('lost response and malformed acceptance stay unknown with no retry',async()=>{
+  for(const reply of [Error('secret reflected failure'),{job_id:'bad'},new Response('bad',{status:500})]){const{client,calls}=fixture([daemon,availability,daemon,reply]);await client.check();await assert.rejects(client.start());assert.equal(client.snapshot().phase,'unknown');assert.equal(client.snapshot().attempted,true);await assert.rejects(client.start(),{code:'attempted'});assert.equal(posts(calls).length,1);assert.equal(JSON.stringify(client.snapshot()).includes('secret'),false);}
+});
+test('job done is unconfirmed and failed means failed, neither enables control',async()=>{
+  for(const [status,phase]of [['pending','updating'],['in_progress','updating'],['done','unconfirmed'],['failed','failed']]){const{client,calls}=fixture([daemon,availability,daemon,{job_id:jobId},{command:'update_reachy_mini',status,logs:[]}]);await client.check();await client.start();await client.checkProgress();assert.equal(client.snapshot().phase,phase);assert.equal(client.snapshot().ready,false);assert.equal(posts(calls).length,1);assert.equal(calls.length,5);}
+});
+test('restart loses job record or new CORS access without declaring success',async()=>{for(const result of [new Response('{}',{status:404}),Error('CORS failure')]){const{client,calls}=fixture([daemon,availability,daemon,{job_id:jobId},result]);await client.check();await client.start();await assert.rejects(client.checkProgress());assert.equal(client.snapshot().phase,'unknown');assert.equal(posts(calls).length,1);}});
+test('only fresh healthy exact offered version confirms installation',async()=>{for(const [change,phase]of [[{},'confirmed'],[{version:'1.12.0'},'unconfirmed'],[{version:'1.2.11'},'unconfirmed'],[{error:'error'},'unconfirmed'],[{state:'starting'},'unconfirmed'],[{wireless_version:false},'unconfirmed']]){const{client,calls}=fixture([daemon,availability,daemon,{job_id:jobId},{...daemon,version:'1.11.0',state:'running',...change}]);await client.check();await client.start();await client.verify();assert.equal(client.snapshot().phase,phase);assert.equal(client.snapshot().ready,false);assert.equal(posts(calls).length,1);}});
+test('manual paste reports evidence distinctly and restored attempt forbids writes',async()=>{const{client}=fixture([daemon,availability,daemon,Error('lost')]);await client.check();await assert.rejects(client.start());const attempt=client.snapshot().attempt;const{client:next,calls}=fixture([],{host:[192,168,1,3].join('.'),attempt});assert.equal(next.verifyPasted(JSON.stringify({...daemon,version:'1.11.0',state:'running'})).phase,'reported');await assert.rejects(next.start(),{code:'attempted'});assert.equal(calls.length,0);next.dispose();assert.throws(()=>next.verifyPasted('{}'),{code:'disposed'});});
+test('body size bounds reject oversized update responses',async()=>{const{client}=fixture([daemon,new Response(' '.repeat(65537))]);await assert.rejects(client.check(),{code:'protocol'});assert.equal(client.snapshot().ready,false);});
+test('attempt receipt binds original address across remount and user-provided new address',async()=>{
+  const{client}=fixture([daemon,availability,daemon,{job_id:jobId}]);await client.check();await client.start();const attempt=client.snapshot().attempt;assert.equal(attempt.originalHost,'reachy-mini.local');client.dispose();
+  for(const host of ['reachy-mini.local',[192,168,1,3].join('.')]){const{client:next,calls}=fixture([{...daemon,version:'1.11.0'}],{host,attempt});assert.equal(next.snapshot().addressChanged,host!==attempt.originalHost);await assert.rejects(next.start(),{code:'attempted'});await next.verify();assert.equal(next.snapshot().phase,'confirmed');assert.equal(posts(calls).length,0);assert.equal(next.snapshot().attempt.originalHost,attempt.originalHost);}
+});
+test('progress cannot regress direct or pasted installation evidence after job disappears',async()=>{
+  for(const pasted of [false,true]){const{client,calls}=fixture([daemon,availability,daemon,{job_id:jobId},{...daemon,version:'1.11.0'},new Response('{}',{status:404})]);await client.check();await client.start();if(pasted)client.verifyPasted(JSON.stringify({...daemon,version:'1.11.0'}));else await client.verify();const before=calls.length;await client.checkProgress();assert.equal(client.snapshot().phase,pasted?'reported':'confirmed');assert.equal(calls.length,before);}
+});

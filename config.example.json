@@ -1,0 +1,10 @@
+{
+  "robotUrl": "http://reachy-mini.local:8000",
+  "expectedHardwareId": "replace-with-your-robot-hardware-id",
+  "expectedVersion": "1.10.0",
+  "port": 18750,
+  "headTrackingEnabled": false,
+  "headTrackingVerified": false,
+  "headTrackingOperatorApproved": false,
+  "headTrackingPilot": false
+}

@@ -1,0 +1,32 @@
+{
+  "name": "reachy-mini-browser-control",
+  "version": "0.1.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "node server/index.mjs",
+    "demo": "node server/index.mjs --demo",
+    "test": "node --test test/*.test.mjs",
+    "setup": "node tools/Setup-Local.mjs",
+    "agent": "node tools/Agent-Diagnostics.mjs",
+    "build:pages": "node tools/Prepare-HeadAssets.mjs && node tools/Build-Pages.mjs",
+    "prebuild": "node tools/Prepare-HeadAssets.mjs",
+    "prepare:cad": "node tools/Prepare-ReachyModel.mjs"
+  },
+  "dependencies": {
+    "@chenglou/pretext": "0.0.9",
+    "@mediapipe/tasks-vision": "1.0.1",
+    "@pollen-robotics/reachy-mini-sdk": "1.8.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "three": "0.186.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "vite": "^7.1.7"
+  }
+}
