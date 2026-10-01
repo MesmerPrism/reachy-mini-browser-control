@@ -8,6 +8,33 @@ const steps = ['Choose a route', 'Check compatibility', 'Connect Wi-Fi', 'Browse
 const outcomes = { checking: 'Checking…', passed: 'Passed', unsupported: 'Not supported', inconclusive: 'Inconclusive', skipped: 'Not run' };
 const emptyChecks = () => SETUP_CHECKS.map(check => ({ ...check, outcome: 'skipped' }));
 
+// Navigation and pasted evidence only: never probe or change a robot on mount.
+export function ExistingRobotGuide() {
+  const [host, setHost] = useState('reachy-mini.local');
+  const [daemon, setDaemon] = useState(null);
+  const links = robotBrowserLinks(host);
+  return <details className="connection-guide">
+    <summary>Connecting an already configured Reachy</summary>
+    <ol>
+      <li><strong>Use the current network.</strong> Put this computer and Reachy on the same Wi-Fi. Guest-network isolation can prevent communication. A previously used robot address may belong to a different device now.</li>
+      <li><strong>Check the intended robot.</strong> Open Reachy Mini Control and compare its identity with the robot in front of you. Use the address shown by your router or Reachy’s own app if the usual hostname does not resolve.</li>
+    </ol>
+    <label htmlFor="existing-robot-host">Current robot hostname or local IP address</label>
+    <input id="existing-robot-host" className="robot-host" value={host} onChange={event => { setHost(event.target.value); setDaemon(null); }} autoComplete="off" spellCheck={false} maxLength={253} aria-describedby="existing-host-help" />
+    <p id="existing-host-help">Enter only the hostname or IP, for example <code>reachy-mini.local</code>. This field creates links; it does not connect or scan the network.</p>
+    {links ? <div className="robot-links"><a href={links.dashboard} target="_blank" rel="noopener noreferrer">Open robot page</a><a href={links.status} target="_blank" rel="noopener noreferrer">Open daemon status</a></div> : <p className="error" role="alert">Use a private local IP or .local hostname, without a scheme, port or path.</p>}
+    <details><summary>Check a copied daemon status</summary><DaemonStatusForm onResult={setDaemon} />
+      {daemon && <p role="status">Reported daemon {daemon.version}, {daemon.wireless ? 'Wireless' : 'Lite / non-wireless'}, state {daemon.state || 'unknown'}.{daemon.hasError ? ' The robot reports an error. Inspect its dashboard before controlling it.' : ''} {!daemon.wireless ? 'Use the local controller for Lite / non-wireless control.' : daemon.version !== '1.10.0' ? 'This version is not admitted for control. Keep using robot-owned tools; a firmware change is not a connection workaround.' : 'The version is admitted, but identity, connection and fresh telemetry still need checking.'} {daemon.state === 'stopped' || daemon.state === 'not_initialized' ? 'If you intend to control this robot, inspect and start the daemon in its own dashboard. This page will not start it automatically.' : ''}</p>}
+    </details>
+    <ol start={3}>
+      <li><strong>Authorize remote access once.</strong> Use Reachy Mini Control's sign-in and remote/WebRTC options. Recent daemons replace the web dashboard with a notice linking to that app. Sign in to your Hugging Face account and keep Reachy online. An initialized robot may still need this account connection.</li>
+      <li><strong>Use that account’s read token.</strong> Create a <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">Hugging Face read token</a>, then paste it into the connection form below. Review permissions yourself. The token stays in this tab’s memory; disconnect or close the tab to clear it.</li>
+      <li><strong>Select and verify.</strong> Close other controllers and robot apps. Choose this robot in the picker, check identity and daemon version, then use Wake only when you are ready. Connecting does not wake or move it.</li>
+    </ol>
+    <details><summary>No robot, blocked connection or no video?</summary><p>No picker entry: check the account, read token, robot internet and remote-access setting. A rejected session can mean another controller is connected. For media failures, try the same network and inspect router isolation or firewall rules.</p><p>The hosted HTTPS page cannot bypass mixed-content, cross-origin or Local Network Access checks when contacting a local HTTP daemon. Allow local-network access only for the intended robot if your browser offers it. Otherwise open the robot’s dashboard in its own tab, or use the <a href="#local">guarded local controller</a>; do not disable browser security. Local dashboard access and SDK remote control are separate connections.</p></details>
+  </details>;
+}
+
 function DaemonStatusForm({ onResult }) {
   const [error, setError] = useState('');
   return <form className="connection-form" onSubmit={event => {
@@ -279,6 +306,7 @@ export default function FirstSetup({ createClient = createFirstSetupClient, brow
     <nav className="setup-steps" aria-label="Setup progress"><ol>{steps.map((name, index) => <li key={name} aria-current={step === index ? 'step' : undefined}>{index + 1}. {name}</li>)}</ol></nav>
     <h3 ref={stepHeading} tabIndex={-1}>Step {step + 1}: {steps[step]}</h3>
     {step === 0 && <>
+      <p>Already joined this network? <a href="#connect">Connect to the existing robot</a>. Use this wizard only when Reachy needs Wi-Fi configured.</p>
       <p>Choose how to reach your Wireless Mini. Both routes check support before accepting network credentials.</p>
       <p>Keep the robot nearby and powered on. Use a personal Wi-Fi network or phone hotspot with internet. The current setup forms do not configure eduroam’s university sign-in.</p>
       <p className="status" role="status" aria-live="polite">{message}</p>

@@ -7,6 +7,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { RobotControl, ReachyAdapter, DemoAdapter } from './control.mjs';
 import { AudioControl } from './audio-control.mjs';
 import { createMediaGuard } from './media-guard.mjs';
+import { localPageHeaders } from './security-headers.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const demo = process.argv.includes('--demo');
@@ -59,9 +60,7 @@ const server = http.createServer(async (req, res) => {
     if (!file.startsWith(path.join(root, 'dist') + path.sep)) return json(res, 404, { error: 'Not found' });
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return json(res, 404, { error: 'Not found; build the app with npm run build' });
     const mime = { '.html': 'text/html', '.js': 'application/javascript', '.mjs': 'application/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.glb': 'model/gltf-binary', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' }[path.extname(file)] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-      'Permissions-Policy': 'camera=(self), microphone=(self), xr-spatial-tracking=()',
-      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:" + port + ' ws://127.0.0.1:' + port + "; media-src 'self' blob:; img-src 'self' data:; frame-ancestors 'none'" });
+    res.writeHead(200, localPageHeaders(mime, port));
     fs.createReadStream(file).pipe(res);
   } catch (e) { if (!res.headersSent) json(res, e.status || 502, { ok: false, error: e.message, controlEpoch: control.epoch }); else res.destroy(); }
 });

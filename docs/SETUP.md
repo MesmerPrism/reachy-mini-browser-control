@@ -5,6 +5,41 @@ Use Node **24** for the local app and CLI. Clone
 or extract its reviewed source ZIP. No external planning checkout or robot is
 needed for the [demo](https://mesmerprism.com/reachy-mini/#demo).
 
+## Connect an already initialized Wireless
+
+Open [browser controls](https://mesmerprism.com/reachy-mini/#connect). The
+“Connecting an already configured Reachy” guide is for a robot that already
+joined Wi-Fi; factory provisioning is a separate route. A new network or a
+different robot does not require a reset or firmware update.
+
+1. Put this computer and the intended robot on the same Wi-Fi. Check the robot's
+   current hostname or private IP in its app or your router; do not reuse a
+   previous robot's identity or assume its old address belongs to this robot.
+2. Open the robot dashboard and daemon status using the page's hostname helper.
+   The helper only builds links and never scans or connects automatically. If
+   `reachy-mini.local` does not resolve, use the robot's current private IP.
+   Optional pasted status is user-reported evidence, not a live identity check.
+3. Inspect errors and daemon state in the robot's own dashboard. If the daemon
+   is stopped, start it there only when you intend to use it. Our page never
+   starts or wakes a robot on connection. Unsupported daemon versions remain
+   blocked; do not change firmware to bypass the admission check.
+4. Use the robot-owned Hugging Face sign-in and remote/WebRTC options. The robot
+   needs internet. Create a read token for the same account, review its scopes,
+   then paste it into the controls. The token remains in tab memory and is
+   cleared on disconnect or closing the tab.
+5. Close competing controllers and robot apps. Select the intended robot,
+   compare identity and version, and check fresh measured state before Wake or
+   any movement.
+
+A local dashboard connection and the SDK remote-control connection are separate.
+The hosted HTTPS page cannot bypass mixed-content, cross-origin or Local Network
+Access protections for a local HTTP daemon. If your browser offers permission,
+grant it only for the intended robot. If access is blocked, open the robot's own
+page in a separate tab or use the guarded local bridge below. Do not disable
+browser security. Guest-network isolation, firewall rules and a competing session
+can also prevent control or media. Webcam and microphone permission are requested
+only for the features that use them.
+
 ## Local guarded bridge
 
 Wireless runs its daemon on the robot; Lite uses USB and its supplied power
@@ -176,3 +211,39 @@ Ordinary local and hosted builds use the original schematic. Optional
 `VITE_REACHY_MODEL=private-cad` when building the local UI to opt in. Configuration,
 downloaded caches and generated CAD remain ignored and excluded from downloads.
 Review [third-party notices](../THIRD_PARTY_NOTICES.md) before redistribution.
+
+## Spatial controls, page console and WebXR
+
+The look-direction pad combines turn and nod. Click or drag the head glyph to
+set tilt, or drag either antenna tip. Arrow keys adjust one degree (five with
+Shift); Home centers the selected gesture. Small numeric fields accept drafts;
+press Enter or leave the field to apply, and Escape to discard. Position and
+speed settings are available under the advanced disclosure. Solid handles show
+requested targets; dashed markers and labelled values show measured feedback.
+Directions are Reachy's own. Body yaw is measured only and stays unchanged.
+
+Open **Agent console** in the Controls or Demo view. `help`, `status` and
+`capabilities` are read-only. After explicitly enabling writes for that connection,
+use `head yaw=2 pitch=-2`, `antennas left=10 right=-10`, `wake`, `sleep` or `stop`.
+Head angles are degrees; x/y/z use millimetres. Omitted axes keep measured values.
+This bounded grammar cannot execute computer-shell commands, sign in, change
+firmware or change networks. Motion uses the existing conservative controller
+limits. Stop is a software request with the transport's existing limitations.
+
+Automation can call `window.reachyAgent.run('status')` and
+`window.reachyAgent.help()`. Writes remain off until enabled in the visible tab,
+and are disabled when the connection changes, following owns the controls or the
+tab is hidden. Optional WebMCP exposes only read-only `reachy_help`,
+`reachy_status` and `reachy_capabilities`; the console works when that experimental
+browser API is absent. Tool registrations use lifecycle-bound abort signals as in
+[Chrome's imperative API](https://developer.chrome.com/docs/ai/webmcp/imperative-api).
+
+The **Headset view** uses the same page and connection. Open the HTTPS page in a
+WebXR headset browser, then choose Enter VR. Camera media uses the existing feed;
+entering VR does not capture a new webcam, wake Reachy or start following.
+Following requires explicit enablement, fresh bounded measured head angles and a
+held controller trigger. Its relative turn/nod/tilt mapping preserves position,
+antennas and body yaw. Release, Stop, stale tracking, a changed connection or a
+lost control gate disarms following; it never restarts itself. Physical headset
+mapping and camera behavior remain unverified. See
+[WebXR session requirements](https://developer.mozilla.org/en-US/docs/Web/API/XRSystem/requestSession).

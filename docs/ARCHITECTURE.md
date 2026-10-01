@@ -49,3 +49,11 @@ ZIP paths retain the normal `.github/` layout.
 It excludes Git history, configuration, private
 evidence, dependency installations and generated CAD. See [contributing](../CONTRIBUTING.md)
 and [status](STATUS.md) for review and verification boundaries.
+
+Spatial gestures share pure screen/angle mapping between local and hosted views.
+The page agent console translates a bounded grammar into the existing adapter;
+its read-only WebMCP tools and session-scoped write option add no separate robot
+transport. WebXR owns presentation and relative rotation mapping; the parent
+retains connection, epoch, authorization and Stop authority. Every XR stream is
+bound to the control context that admitted it. These optional interfaces do not
+require a Quest installation or Rusty Morphospace service.

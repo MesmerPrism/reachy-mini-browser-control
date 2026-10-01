@@ -87,6 +87,9 @@ excluded from public downloads. Review [third-party notices](THIRD_PARTY_NOTICES
 before sharing generated models. Keep configuration, credentials, robot identities,
 network details and private evidence out of commits and public archives.
 
+Compact head/antenna gestures, the in-page agent console and experimental WebXR
+headset view share the same Controls page. Read [interaction and automation details](docs/SETUP.md#spatial-controls-page-console-and-webxr).
+
 For read-only diagnostics, `npm run agent -- --help` lists bounded status,
 offline guidance and publication-integrity commands. See [CLI details](docs/SETUP.md#agent-diagnostics-cli).
 For project structure and changes, read [architecture](docs/ARCHITECTURE.md) and
