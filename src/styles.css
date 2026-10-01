@@ -12,3 +12,60 @@
 .control-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.desktop-control>.antennas{margin-top:12px}.desktop-control>.antennas .dials{width:100%;max-width:760px;align-self:center}.desktop-control>.antennas .centre-button{max-width:720px;align-self:center}.robot-model{min-width:0;display:flex;flex-direction:column}.model-heading{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px}.model-feedback{font-size:12px;color:var(--muted);line-height:1.4;max-width:260px}.model-feedback.stale{color:#b3342b}.model-stage{position:relative;background:#edf1f4;border:1px solid #dfe6ea;border-radius:7px;min-height:300px;flex:1;overflow:hidden}.model-stage canvas{display:block;width:100%;height:100%;touch-action:none}.model-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;color:var(--muted);background:#edf1f4;z-index:1;font-size:13px}.model-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:12px 0 8px}.model-toolbar button{font-size:12px;padding:6px 11px;min-height:34px}.model-toolbar label{display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap}.model-toolbar input{accent-color:var(--teal)}.model-caption{font-size:11px;line-height:1.5;color:var(--muted);margin:3px 0}.robot-model .inline-error{overflow-wrap:anywhere}@media(max-width:800px){.control-grid{grid-template-columns:1fr}.model-stage{height:350px;flex:none}}@media(max-width:520px){.model-stage{height:320px;min-height:280px}.model-feedback{max-width:none}.model-toolbar{gap:8px}.model-toolbar button{flex:1 1 50px}.model-toolbar label{margin-right:12px}}
 .model-canvas-host{position:absolute;inset:0;min-width:0;min-height:0}
 .camera-listening{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:16px}.camera-listening label{display:flex;align-items:center;gap:8px;font-size:13px}.camera-listening>span{font-size:12px;color:var(--muted)}.camera-listening input{accent-color:var(--teal)}.camera-listening label:last-child{flex-basis:100%}.camera-listening input[type=range]{flex:1;min-width:70px;max-width:200px}.camera-listening output{font-size:12px;color:var(--muted)}
+
+/* Keep viewing and manual control together; extras remain mounted in disclosures. */
+.desktop-control{padding:16px 18px 92px}
+.desktop-control .header{margin-bottom:12px;gap:16px}
+.desktop-control .brand h1{font-size:24px}
+.desktop-control .panel{min-width:0;padding:12px;border-radius:7px}
+.desktop-control h2{font-size:18px;letter-spacing:0}
+.primary-workspace{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px}
+.primary-workspace>.head-controls{grid-column:1/-1;margin:0}
+.primary-workspace .camera-heading,.primary-workspace .model-heading{margin-bottom:10px;gap:8px}
+.primary-workspace .camera-frame{aspect-ratio:4/3;min-height:0}
+.primary-workspace .camera-empty{gap:8px;padding:12px}
+.primary-workspace .camera-toolbar{gap:8px;padding:8px;flex-wrap:wrap}
+.primary-workspace .camera-toolbar span{overflow-wrap:anywhere;min-width:0}
+.primary-workspace .model-stage{height:280px;min-height:240px;flex:none}
+.primary-workspace .model-toolbar{gap:6px;margin:8px 0 4px}
+.primary-workspace .model-feedback{max-width:none;font-size:11px}
+.primary-workspace .panel-caption{margin:4px 0 8px;font-size:12px;line-height:1.45}
+.primary-workspace .head-centre-actions{margin-top:8px;gap:8px}
+.primary-workspace .hold-caption{margin:8px 0;font-size:11px;line-height:1.5}
+.primary-workspace .spatial-orientation{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:10px;margin:10px 0}
+.primary-workspace .spatial-pad{height:130px}
+.primary-workspace .spatial-dial{height:112px}
+.primary-workspace .spatial-fields{gap:4px 8px}
+.primary-workspace .spatial-precision{flex-wrap:wrap}
+.head-advanced,.camera-audio-options{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
+.head-advanced>summary,.camera-audio-options>summary,.auxiliary-panel>summary{cursor:pointer;font-size:13px;line-height:1.5}
+.head-advanced .antenna-speed{margin-top:12px}
+.camera-audio-options .camera-listening{margin-top:10px;gap:8px}
+.workspace-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;margin-top:12px}
+.auxiliary-panel{min-width:0;border-top:1px solid var(--border);padding-top:8px}
+.auxiliary-panel>.panel{margin-top:8px}
+.antenna-policy .antenna-speed{margin-top:10px}
+.desktop-control summary:focus-visible{outline:3px solid #32bdb1;outline-offset:3px}
+.desktop-control p,.desktop-control summary,.desktop-control label{overflow-wrap:break-word}
+.primary-workspace .model-antenna-strip{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:8px}
+.primary-workspace .model-antenna-mode{display:flex;align-items:center;gap:6px;width:100%;font-size:12px}
+.primary-workspace .model-antenna-mode input{margin:0;width:16px;height:16px;accent-color:var(--teal)}
+.primary-workspace .model-antenna-strip .spatial-precision{font-size:12px}
+.primary-workspace .model-antenna-strip .spatial-precision input{width:55px}
+.primary-workspace .model-antenna-strip>button{min-height:32px;padding:4px 8px;font-size:12px}
+.primary-workspace .model-antenna-feedback{width:100%;font-size:11px;color:var(--muted)}
+.primary-workspace .model-details{border-top:1px solid var(--border);padding-top:8px;margin-top:4px;font-size:12px}
+@media(min-width:1050px){
+  .primary-workspace{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:start}
+  .primary-workspace>.head-controls{grid-column:auto}
+  .primary-workspace .camera-frame{aspect-ratio:4/3}
+  .primary-workspace .model-stage{height:280px}
+}
+@media(max-width:760px){
+  .primary-workspace{grid-template-columns:minmax(0,1fr)}
+  .primary-workspace>.head-controls{grid-column:auto}
+  .workspace-options{grid-template-columns:minmax(0,1fr)}
+  .primary-workspace .camera-frame{aspect-ratio:16/9}
+  .primary-workspace .model-stage{height:300px}
+}
+@media(max-width:520px){.desktop-control{padding:12px 12px 112px}.primary-workspace .camera-toolbar{gap:6px}.primary-workspace .camera-toolbar span{font-size:10px}.primary-workspace .model-stage{height:280px}.desktop-control .activity{flex-wrap:wrap}.desktop-control .activity>span{flex:1 1 100%}.desktop-control .activity-actions{margin-left:auto}}

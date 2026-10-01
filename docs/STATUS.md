@@ -46,6 +46,15 @@ cursor interaction. Motion and power commands require explicit arming; Stop
 remains callable on the active connection after movement authorization is revoked.
 These tool tests do not add physical hardware validation.
 
+The **0.3.0** workspace pass keeps camera, measured 3D and head controls visible
+together on a 1280×800 desktop viewport. Antenna gestures and numeric inputs are
+integrated into the model panel. Browser simulation verified ordinary orbit without
+antenna movement, explicit 3D drag with measured readback, Stop revoking drag mode,
+and numeric input outside drag mode. A 390×844 viewport stacked the panels without
+horizontal overflow. **305 offline tests** and both production builds passed.
+The source inventory includes **135 reviewed files**. This pass adds no physical
+robot, camera/audio capture or headset validation.
+
 The daemon 1.11 candidate requires attended browser/robot transport, telemetry,
 camera/audio, identity and safe control checks before a separately reviewed gate
 change. Offline success alone is insufficient. Read [candidate compatibility](DAEMON_1_11_COMPATIBILITY.md)

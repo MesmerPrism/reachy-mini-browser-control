@@ -21,7 +21,7 @@ function Page() {
     window.addEventListener('hashchange', navigate);
     return () => window.removeEventListener('hashchange', navigate);
   }, []);
-  return <div className={`page ${size}`}>
+  return <div className={`page ${size} ${['connect', 'demo'].includes(view) ? 'controller-page' : ''}`}>
     <header><a href="#home"><FitText>Reachy Mini</FitText></a><nav aria-label="Page sections">{[['connect', 'Controls'], ['demo', 'Demo'], ['setup', 'Wi-Fi setup'], ['use', 'Help'], ['source', 'Source']].map(([id, label]) => <a key={id} href={`#${id}`} aria-current={view === id ? 'page' : undefined}><FitText>{label}</FitText></a>)}</nav></header>
     <main ref={main} tabIndex={-1}><div className="page-heading"><h1>{view === 'home' ? 'Reachy Mini in your browser' : 'Reachy Mini'}</h1>
       <details className="text-options"><summary>Text display</summary><label htmlFor="text-size">Display size and spacing</label><select id="text-size" value={size} onChange={event => setSize(event.target.value)}><option value="normal">Normal</option><option value="large">200% text</option><option value="spaced">Increased text spacing</option></select></details></div>
@@ -31,8 +31,8 @@ function Page() {
         <p>Browser control currently supports Wireless daemon 1.10.0. Network setup can use other versions’ own browser pages. For Lite over USB, use the <a href="#local">local controller</a>.</p>
         <p>No robot yet? <a href="#demo">Try the simulated Reachy</a>. Move its head and see how the camera view changes in a 360° room.</p>
       </section>
-      <section id="connect" hidden={view !== 'connect'}><h2>Connect to Reachy</h2><p>Already on Wi-Fi? Connect below. Need a network first? <a href="#setup">Configure Wi-Fi</a>. Leaving this view disconnects the control session.</p>{view === 'connect' && <><ExistingRobotGuide /><WirelessPanel /></>}</section>
-      <section id="demo" hidden={view !== 'demo'}><h2>Try Reachy without a robot</h2><p>This simulation uses an animated schematic robot and an AI-generated room panorama. It does not connect to hardware. Turn, nod or tilt the head to explore the camera view.</p>{view === 'demo' && <WirelessPanel initialDemo />}</section>
+      <section id="connect" hidden={view !== 'connect'}>{view === 'connect' && <><WirelessPanel /><ExistingRobotGuide /><p className="workspace-note">Need a network first? <a href="#setup">Configure Wi-Fi</a>. Leaving this view disconnects the control session.</p></>}</section>
+      <section id="demo" hidden={view !== 'demo'}>{view === 'demo' && <WirelessPanel initialDemo />}</section>
       <section id="setup" hidden={view !== 'setup'}><h2>Set up your robot</h2>
         <p>Keep this tab on Setup while provisioning. Leaving setup disconnects Bluetooth and clears credentials; a network request already submitted to Reachy may still finish there.</p>
         <p>Exploring without hardware? <a href="#demo">Try the simulated robot and camera</a>.</p>

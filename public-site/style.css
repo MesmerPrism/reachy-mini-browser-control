@@ -71,3 +71,60 @@ h1,h2,h3,p,li,summary { overflow-wrap: break-word; } .control-section>button,.co
 
 .connected-surface[hidden] { display: none; }
 .controls-grid .control-section>button { width: auto; padding: 7px 14px; }
+
+/* Desktop workspace: camera, measured model and head inputs share one row. */
+.controller-page header,.controller-page main,.controller-page footer { max-width:1600px; padding:12px 18px; }
+.controller-page { font-size:16px; }
+.controller-page header { gap:16px; }
+.controller-page .page-heading h1 { margin:0; font-size:1.4em; }
+.controller-page .text-options { font-size:.85em; }
+.controller-page #connect,.controller-page #demo { margin:10px 0; }
+.controller-bar { display:flex; align-items:center; gap:12px; margin-bottom:12px; border-block:1px solid #d1d5cc; }
+.controller-bar .status { flex:1; border:0; margin:0; padding:8px 0; }
+.controller-bar .actions { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+.controller-page button,.controller-page select { min-height:34px; padding:5px 10px; }
+.controller-workspace { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1.1fr) minmax(260px,.9fr); align-items:start; gap:12px; }
+.controller-workspace>section { margin:0; padding:12px; border:1px solid #d1d5cc; border-radius:5px; background:#fff; }
+.controller-workspace h2 { font-size:1.1em; margin:0 0 8px; }
+.controller-workspace .model-heading { gap:2px 12px; margin-bottom:8px; }
+.controller-workspace .model-heading h2 { margin:0; }
+.controller-workspace .model-feedback { font-size:.75em; }
+.controller-workspace .model-stage,.controller-workspace .simulated-camera-stage,.controller-workspace .operator-camera>video { height:clamp(220px,32vh,340px); aspect-ratio:auto; }
+.controller-workspace .model-toolbar { gap:4px; padding-top:8px; }
+.controller-workspace .model-toolbar button { flex:1 1 50px; min-height:30px; font-size:.8em; padding:4px; }
+.model-antenna-strip { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; padding:8px 0; }
+.model-antenna-mode { display:flex; align-items:center; gap:6px; width:100%; font-size:.85em; }
+.model-antenna-mode input { width:16px; height:16px; margin:0; }
+.model-antenna-strip .spatial-precision { font-size:.8em; gap:4px; }
+.model-antenna-strip .spatial-precision input { width:55px; min-height:30px; }
+.model-antenna-strip>button { min-height:30px; font-size:.8em; padding:3px 8px; }
+.model-antenna-feedback { width:100%; font-size:.75em; color:#4c5a50; }
+.controller-workspace .model-caption,.controller-workspace .media-note { font-size:.8em; margin:6px 0; }
+.controller-workspace .camera-options,.controller-workspace .model-details { font-size:.8em; padding:7px 0 0; margin-top:8px; }
+.operator-camera>p { font-size:.8em; margin:6px 0; }
+.operator-head .spatial-orientation { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:10px; margin:8px 0; }
+.operator-head .spatial-pad { height:130px; margin:8px 0; border-radius:5px; }
+.operator-head .spatial-dial { height:112px; }
+.operator-head .spatial-fields { gap:4px; }
+.operator-head .spatial-precision { font-size:12px; flex-wrap:wrap; }
+.operator-head .spatial-precision input { width:55px; min-height:30px; }
+.operator-head>button { width:auto; }
+.operator-head .spatial-position { font-size:.85em; padding-top:8px; }
+.operator-head .spatial-position-fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.controller-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px 12px; margin-top:12px; }
+.controller-options>details { min-width:0; margin:0; padding:8px 10px; border:1px solid #d1d5cc; border-radius:5px; background:#fff; font-size:.9em; }
+.controller-options>details[open] { grid-column:1/-1; }
+.controller-options .webxr-controls { margin-top:10px; }
+.controller-page .connection-guide { margin:12px 0 0; padding:8px 0; font-size:.9em; }
+.workspace-note { font-size:.85em; margin:8px 0; }
+.controller-page footer { font-size:.85em; }
+.controller-page summary>.fit-text { display:inline; }
+.controller-workspace .model-heading { min-height:22px; }
+.controller-workspace .spatial-help,.controller-workspace .spatial-measured { color:#4c5a50; }
+.controller-page.large { font-size:32px; }
+.controller-page.large .controller-workspace,.controller-page.large .controller-options { grid-template-columns:minmax(0,1fr); }
+.controller-page.large .controller-workspace h2 { font-size:1.1em; }
+.controller-page.large .model-antenna-strip .spatial-precision,.controller-page.large .operator-head .spatial-precision { font-size:1em; }
+.controller-page.large .spatial-precision input { width:4em; }
+@media(max-width:1000px) { .controller-workspace { grid-template-columns:repeat(2,minmax(0,1fr)); } .operator-head { grid-column:1/-1; } .operator-head .spatial-orientation { max-width:600px; } }
+@media(max-width:700px) { .controller-page header,.controller-page main,.controller-page footer { padding:12px; } .controller-workspace,.controller-options { grid-template-columns:minmax(0,1fr); } .controller-bar { align-items:start; flex-direction:column; gap:0; } .controller-bar .actions { margin-top:0; } .controller-page button,.controller-page select { min-height:44px; } .controller-workspace .model-stage,.controller-workspace .simulated-camera-stage,.controller-workspace .operator-camera>video { height:260px; } .model-antenna-strip>button,.controller-workspace .model-toolbar button { min-height:36px; } }

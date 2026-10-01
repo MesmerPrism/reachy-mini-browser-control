@@ -215,10 +215,16 @@ Review [third-party notices](../THIRD_PARTY_NOTICES.md) before redistribution.
 ## Spatial controls, page console and WebXR
 
 The look-direction pad combines turn and nod. Click or drag the head glyph to
-set tilt, or drag either antenna tip. Arrow keys adjust one degree (five with
-Shift); Home centers the selected gesture. Small numeric fields accept drafts;
+set tilt. Antennas now share the 3D panel: enable **Move antennas in 3D**, then drag
+a solid antenna. Ordinary dragging orbits the view. From an edge-on view, a relative
+horizontal drag changes the angle. Teal wireframe outlines show requested antenna
+positions; solid geometry continues to show measured feedback. Compact Left/Right
+numeric inputs work without entering the 3D movement mode. Head gesture arrow keys
+adjust one degree (five with Shift); Home centers the selected gesture. Fields accept drafts;
 press Enter or leave the field to apply, and Escape to discard. Position and
-speed settings are available under the advanced disclosure. Solid handles show
+speed settings are available under the advanced disclosure. Desktop camera, model
+and head controls share one row; smaller screens stack them. Audio, tracking, emotes
+and WebXR are expandable sections on that same page. Solid head handles show
 requested targets; dashed markers and labelled values show measured feedback.
 Directions are Reachy's own. Body yaw is measured only and stays unchanged.
 

@@ -12,6 +12,7 @@ export const PUBLIC_FILES = Object.freeze([
   '.github/workflows/checks.yml', 'docs/ARCHITECTURE.md', 'docs/STATUS.md', 'docs/DAEMON_1_11_COMPATIBILITY.md',
   'src/AgentConsole.jsx', 'src/agent-console.mjs', 'src/agent-console.css', 'test/agent-console.test.mjs',
   'src/command-flight.mjs', 'test/command-flight.test.mjs',
+  'src/model-antenna-control.mjs', 'test/model-antenna-control.test.mjs',
   'server/security-headers.mjs', 'test/security-headers.test.mjs',
   'src/SpatialControls.jsx', 'src/spatial-control.mjs', 'src/spatial-controls.css', 'test/spatial-control.test.mjs',
   'src/WebXRControls.jsx', 'src/xr-head-follow.mjs', 'src/webxr-controls.css', 'test/xr-head-follow.test.mjs',

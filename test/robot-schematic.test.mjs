@@ -9,7 +9,7 @@ import { buildRobotTransforms, IDENTITY_MATRIX } from '../src/robot-model-state.
 test('public schematic has five finite original rigid groups and accepts the measured transform path',async()=>{
   // Compile the real JSX module without starting React, WebGL or a browser.
   const output=await build({entryPoints:[fileURLToPath(new URL('../src/RobotModel.jsx',import.meta.url))],bundle:true,
-    platform:'node',format:'cjs',write:false,external:['react','three']});
+    platform:'node',format:'cjs',write:false,external:['react','three'],loader:{'.css':'empty'}});
   const module={exports:{}};
   new Function('require','module','exports',output.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
   const diagram=module.exports.createSchematicRobot();
