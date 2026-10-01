@@ -24,6 +24,7 @@ export function useHeadControl(control, onEngagementChange = () => {}) {
   const setEngaged = value => { if (engaged.current !== value) { engaged.current = value; callback.current(value); } };
   const canSend = () => {
     const c = latest.current, s = c.status;
+    if (c.isCommandPending?.()) return false;
     return !document.hidden && c.session?.headManualPoseModes === true && c.session?.headTrackingMotion === true &&
       s.connected && s.ready && s.awake && !s.busy && !s.headTrackingActive &&
       !(s.adjusting && !s.headManualActive) && !c.commandPending && !c.disabled;
@@ -49,15 +50,23 @@ export function useHeadControl(control, onEngagementChange = () => {}) {
   const submit = partial => {
     const p = policy.current;
     if (!canSend() || (p.limited && (!Number.isFinite(p.speed) || p.speed < 5 || p.speed > 120 ||
-        !Number.isFinite(p.linearSpeed) || p.linearSpeed < 1 || p.linearSpeed > 50))) return;
-    if (!queue.current.enqueue({ ...partial, speedLimit: p.limited ? p.speed : null, linearSpeedLimit: p.limited ? p.linearSpeed : null })) return;
+        !Number.isFinite(p.linearSpeed) || p.linearSpeed < 1 || p.linearSpeed > 50))) return false;
+    if (!queue.current.enqueue({ ...partial, speedLimit: p.limited ? p.speed : null, linearSpeedLimit: p.limited ? p.linearSpeed : null })) return false;
     targetRef.current = { ...targetRef.current, ...partial }; setTargets(targetRef.current);
-    lastInput.current = performance.now(); setEngaged(true); setError('');
+    lastInput.current = performance.now(); setEngaged(true); setError(''); return true;
   };
   const setAxis = (axis, value) => {
     if (!AXES.includes(axis) || !Number.isFinite(value)) return;
     const cap = getLimits()[axis];
-    submit({ [axis]: Math.max(-cap, Math.min(cap, Math.round(value))) });
+    submit({ [axis]: Math.max(-cap, Math.min(cap, Math.round(value * 10) / 10)) });
+  };
+  const setPose = partial => {
+    if (!partial || typeof partial !== 'object' || Array.isArray(partial)) return;
+    const entries = Object.entries(partial);
+    // Reject the whole gesture if malformed; never silently send half a pose.
+    if (!entries.length || entries.some(([axis, value]) => !AXES.includes(axis) || !Number.isFinite(value))) return;
+    const caps = getLimits();
+    return submit(Object.fromEntries(entries.map(([axis, value]) => [axis, Math.max(-caps[axis], Math.min(caps[axis], Math.round(value * 10) / 10))])));
   };
   const centreRotation = () => submit({ yaw: 0, pitch: 0, roll: 0 });
   const centrePosition = () => submit({ x: 0, y: 0, z: 0 });
@@ -101,5 +110,5 @@ export function useHeadControl(control, onEngagementChange = () => {}) {
   return { targets, measured: { ...control.status.headAngles, ...control.status.headPositionMm }, disabled, optionsDisabled: control.session?.headManualPoseModes !== true || !control.status.connected || !control.status.ready ||
       !!control.status.busy || !!control.status.headTrackingActive || !!control.commandPending,
     limitSpeed, speedLimit, linearSpeedLimit, invalidSpeed, invalidAngularSpeed, invalidLinearSpeed,
-    setAxis, centreRotation, centrePosition, changeLimitSpeed, changeSpeedLimit, changeLinearSpeedLimit, error, limits };
+    setAxis, setPose, centreRotation, centrePosition, changeLimitSpeed, changeSpeedLimit, changeLinearSpeedLimit, error, limits };
 }

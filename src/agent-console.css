@@ -1,0 +1,8 @@
+.agent-console { border-top: 1px solid #c4c9bf; padding-top: 12px; margin-top: 20px; }
+.agent-console summary { cursor: pointer; font-weight: 600; }
+.agent-console p { margin: 10px 0; font-size: .95rem; }
+.agent-console .agent-command-line { display: flex; gap: 8px; margin: 6px 0 10px; }
+.agent-console .agent-command-line input { flex: 1; min-width: 0; font-family: monospace; padding: 8px; }
+.agent-console .agent-write-option { display: flex; align-items: center; gap: 8px; }
+.agent-console .agent-write-option input { width: auto; }
+.agent-console pre { max-height: 240px; overflow: auto; padding: 12px; background: #edf0e8; color: #22372a; font: 13px/1.5 monospace; white-space: pre-wrap; overflow-wrap: anywhere; }

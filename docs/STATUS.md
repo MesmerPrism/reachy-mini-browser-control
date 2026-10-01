@@ -1,4 +1,4 @@
-# Status — 2026-09-30
+# Status — 2026-10-01
 
 This is an independent prototype. The following separates observed hardware
 results from offline evidence; it is not a general compatibility certification.
@@ -15,7 +15,29 @@ results from offline evidence; it is not a general compatibility certification.
 | Fresh root review | **273 offline tests passed** and **119 local publication artifact files were verified** before this housekeeping pass. These are dated receipts, not a claim that every later revision has run the same checks. |
 | Standalone housekeeping | **278 tests passed**, local and portable hosted production builds passed. A relocated browser demo rendered and its head control responded. The production webcam worker initialized its real model without capture; no robot, camera or microphone was used. |
 | Static source projection | A live check found that Pages reserves `.github/`. The source manifest now binds a `github/` website projection while the repository and ZIP retain canonical CI paths. Version **0.1.2** preserves the earlier 0.1.1 archive identity. |
-| Live hosted verification | The live HTTPS check timed out. Current live deployment consistency was not established by that attempt. |
+| Previous hosted verification | The 0.1.2 deployment was verified against 139 build/source/archive files. A later website commit affected Fleet only. This is a dated publication receipt. |
+
+The October 1 interface pass adds compact spatial head/antenna gestures, a bounded
+page console and an integrated experimental WebXR view. Offline tests cover the
+new gesture, command grammar and XR mapping/gate behavior. Browser simulation
+checks include keyboard gestures, requested/measured feedback, negative numeric
+input, read-only console output and explicit simulated writes. The production
+page and local bridge also render without a framework error overlay.
+
+A different initialized Wireless robot was observed on daemon **1.10.0**, healthy
+and asleep, with remote access and media available and no current app lock.
+Read-only daemon/ownership/measured-state checks passed through the local bridge.
+Attended local-page tests completed Wake, small left/right antenna movements,
+Stop and Sleep. Both antenna targets reached measured feedback. Small head-turn
+tests encountered stale telemetry and recovered by holding measured pose; they
+do not establish reliable head control on this connection. The robot was confirmed
+asleep after testing. No firmware, Wi-Fi or new camera/microphone capture was tested.
+The final interface revision passed **297 offline tests**, both production builds
+and the **133-file** public source audit. Browser checks verified explicit console
+write enablement and actual read-only WebMCP status discovery and invocation.
+Hosted authenticated WebRTC and physical WebXR still require their account/device
+validation. The desktop browser viewport override did not change its
+layout size, so mobile rendering is not claimed as verified.
 
 The daemon 1.11 candidate requires attended browser/robot transport, telemetry,
 camera/audio, identity and safe control checks before a separately reviewed gate

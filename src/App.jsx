@@ -39,9 +39,9 @@ export default function App() {
       <Camera media={media} token={session?.token} demo={session?.mode === 'demo'} connected={status.connected} mediaReady={status.mediaReady} />
       <ModelBoundary><Suspense fallback={<section className="panel robot-model"><h2>Reachy in 3D</h2><p>Loading model…</p></section>}><RobotModel control={control} schematic={import.meta.env.VITE_REACHY_MODEL !== 'private-cad'} /></Suspense></ModelBoundary>
     </div>
-    <Antennas targets={control.targets} measured={status.antennas} disabled={disabled || otherControlBusy || !status.awake || session?.antennaModes !== true || control.invalidSpeed} optionsDisabled={disabled || otherControlBusy || session?.antennaModes !== true} bridgeUpdateRequired={!!session && session.antennaModes !== true} setAngle={control.setAngle} centre={control.centre} limitSpeed={control.limitSpeed} speedLimit={control.speedLimit} changeLimitSpeed={control.changeLimitSpeed} invalidSpeed={control.invalidSpeed} />
+    <Antennas targets={control.targets} measured={status.antennas} disabled={disabled || otherControlBusy || !status.awake || session?.antennaModes !== true || control.invalidSpeed} optionsDisabled={disabled || otherControlBusy || session?.antennaModes !== true} bridgeUpdateRequired={!!session && session.antennaModes !== true} setAngle={control.setAngle} centre={control.centre} limitSpeed={control.limitSpeed} speedLimit={control.speedLimit} changeLimitSpeed={control.changeLimitSpeed} changeSpeedLimit={control.changeSpeedLimit} invalidSpeed={control.invalidSpeed} />
     <AudioControls control={control} media={media} />
-    <HeadControls control={control} onEngagementChange={value => { if (value) control.cancelAntennaQueue(); setManualHeadEngaged(value); }} />
+    <HeadControls control={control} videoElement={media.videoRef.current} onEngagementChange={value => { if (value) control.cancelAntennaQueue(); setManualHeadEngaged(value); }} />
     <HeadTracking control={{ ...control, disabled: disabled || !!status.headManualActive || manualHeadEngaged }} />
     <Emotes emotes={control.emotes} error={control.catalogError} disabled={disabled || otherControlBusy || !status.awake} onPlay={id => command('emote', { id })} />
     <footer className="activity">

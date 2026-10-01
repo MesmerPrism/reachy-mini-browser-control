@@ -10,6 +10,11 @@ import { execFileSync } from 'node:child_process';
 export const PUBLIC_FILES = Object.freeze([
   '.gitignore', '.gitattributes', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'AGENTS.md', 'CONTRIBUTING.md',
   '.github/workflows/checks.yml', 'docs/ARCHITECTURE.md', 'docs/STATUS.md', 'docs/DAEMON_1_11_COMPATIBILITY.md',
+  'src/AgentConsole.jsx', 'src/agent-console.mjs', 'src/agent-console.css', 'test/agent-console.test.mjs',
+  'src/command-flight.mjs', 'test/command-flight.test.mjs',
+  'server/security-headers.mjs', 'test/security-headers.test.mjs',
+  'src/SpatialControls.jsx', 'src/spatial-control.mjs', 'src/spatial-controls.css', 'test/spatial-control.test.mjs',
+  'src/WebXRControls.jsx', 'src/xr-head-follow.mjs', 'src/webxr-controls.css', 'test/xr-head-follow.test.mjs',
   'public-site/newsreader-latin.woff2', 'public-site/newsreader-latin-ext.woff2', 'test/build-pages.test.mjs',
   'docs/SETUP.md', 'package.json', 'package-lock.json', 'config.example.json', 'index.html', 'vite.config.js',
   'licenses/React-Scheduler.txt', 'licenses/Hugging-Face-Hub.txt', 'licenses/Hugging-Face-Tasks.txt', 'licenses/Newsreader-OFL.txt', 'licenses/React.txt', 'licenses/React-DOM.txt', 'licenses/Lucide.txt', 'licenses/Three.txt',
