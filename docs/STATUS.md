@@ -39,6 +39,13 @@ Hosted authenticated WebRTC and physical WebXR still require their account/devic
 validation. The desktop browser viewport override did not change its
 layout size, so mobile rendering is not claimed as verified.
 
+The **0.2.1** agent-interface follow-up passed **303 offline tests** and both
+production builds. WebMCP discovery and direct status, arm, bounded head command,
+measured readback, Stop and disarm calls passed in browser simulation without
+cursor interaction. Motion and power commands require explicit arming; Stop
+remains callable on the active connection after movement authorization is revoked.
+These tool tests do not add physical hardware validation.
+
 The daemon 1.11 candidate requires attended browser/robot transport, telemetry,
 camera/audio, identity and safe control checks before a separately reviewed gate
 change. Offline success alone is insufficient. Read [candidate compatibility](DAEMON_1_11_COMPATIBILITY.md)
