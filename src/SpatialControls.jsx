@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { boundTarget, dialTarget, padTarget } from './spatial-control.mjs';
+import { boundTarget, dialTarget, padTarget, positionPadTarget } from './spatial-control.mjs';
 import './spatial-controls.css';
 
 const display = value => Number.isFinite(value) ? `${Number(value.toFixed(1))}°` : '—';
@@ -26,6 +26,68 @@ export function PrecisionField({ label, value, limit, disabled, onChange, unit =
     if (event.key === 'Enter') { event.preventDefault(); commit(); }
     if (event.key === 'Escape') { event.preventDefault(); dirty.current = false; setDraft(formatted); }
   }} /><span>{unit}</span></label>;
+}
+
+// Camera and translation gestures share the existing command path. Captured
+// gestures expire on Stop/epoch, gate, visibility or focus changes.
+function useSurfaceGesture({ disabled, contextKey, onChange }, map) {
+  const live = useRef(null), drag = useRef(null);
+  live.current = { disabled, contextKey, onChange, map };
+  const cancel = () => {
+    const previous = drag.current; drag.current = null;
+    if (previous?.element.hasPointerCapture(previous.id)) previous.element.releasePointerCapture(previous.id);
+  };
+  const change = event => {
+    const current = live.current, held = drag.current;
+    if (!held || held.id !== event.pointerId) return;
+    if (current.disabled || current.contextKey !== held.contextKey || document.hidden) { cancel(); return; }
+    const target = current.map(event);
+    if (target) { try { if (current.onChange(target) === false) cancel(); } catch { cancel(); } }
+  };
+  useEffect(() => { cancel(); }, [disabled, contextKey]);
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) cancel(); };
+    document.addEventListener('visibilitychange', hidden); window.addEventListener('blur', cancel);
+    return () => { cancel(); document.removeEventListener('visibilitychange', hidden); window.removeEventListener('blur', cancel); };
+  }, []);
+  return {
+    onPointerDown: event => {
+      if (live.current.disabled || document.hidden || event.button !== 0 || drag.current || event.target.closest?.('button,input,select,summary,a,[data-no-aim]')) return;
+      event.preventDefault(); drag.current = { id: event.pointerId, element: event.currentTarget, contextKey: live.current.contextKey };
+      event.currentTarget.setPointerCapture(event.pointerId); change(event);
+    },
+    onPointerMove: change,
+    onPointerUp: event => { if (drag.current?.id === event.pointerId) cancel(); },
+    onPointerCancel: cancel,
+    onLostPointerCapture: cancel,
+  };
+}
+
+export function CameraAimSurface({ values, limits = { yaw: 20, pitch: 15 }, disabled, onChange, contextKey, children, className = '', hidden = false }) {
+  const handlers = useSurfaceGesture({ disabled, contextKey, onChange }, event => padTarget(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect(), limits));
+  return <div hidden={hidden} className={`camera-aim-surface ${className}${disabled ? ' is-disabled' : ''}`} role="group" aria-label="Camera turn and nod control" aria-disabled={disabled} tabIndex={disabled || hidden ? -1 : 0} title="Drag the camera view to turn and nod" {...handlers} onKeyDown={event => {
+    if (event.target !== event.currentTarget || disabled || document.hidden) return;
+    const changes = { ArrowLeft: ['yaw', 1], ArrowRight: ['yaw', -1], ArrowUp: ['pitch', -1], ArrowDown: ['pitch', 1] };
+    if (changes[event.key]) { event.preventDefault(); const [axis, direction] = changes[event.key]; onChange({ [axis]: boundTarget(values[axis] + direction * (event.shiftKey ? 5 : 1), limits[axis]) }); }
+    if (event.key === 'Home') { event.preventDefault(); onChange({ yaw: 0, pitch: 0 }); }
+  }}>{children}</div>;
+}
+
+export function PositionPad({ values, measured = {}, limits = { y: 10, z: 10 }, disabled, onChange, contextKey }) {
+  const position = target => ({ left: `${50 - ((boundTarget(target.y, limits.y) ?? 0) / (limits.y || 1)) * 43}%`, top: `${50 - ((boundTarget(target.z, limits.z) ?? 0) / (limits.z || 1)) * 36}%` });
+  const handlers = useSurfaceGesture({ disabled, contextKey, onChange }, event => positionPadTarget(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect(), limits));
+  return <div className="spatial-position-pad-control"><h3>Shift head</h3>
+    <div className={`spatial-pad spatial-position-pad${disabled ? ' is-disabled' : ''}`} tabIndex={disabled ? -1 : 0} role="group" aria-label="Head sideways and vertical position pad" aria-disabled={disabled} {...handlers} onKeyDown={event => {
+      if (disabled || document.hidden) return;
+      const changes = { ArrowLeft: ['y', 1], ArrowRight: ['y', -1], ArrowUp: ['z', 1], ArrowDown: ['z', -1] };
+      if (changes[event.key]) { event.preventDefault(); const [axis, delta] = changes[event.key]; onChange({ [axis]: boundTarget(values[axis] + delta * (event.shiftKey ? 5 : 1), limits[axis]) }); }
+      if (event.key === 'Home') { event.preventDefault(); onChange({ y: 0, z: 0 }); }
+    }}>
+      <span className="pad-label pad-left">Left</span><span className="pad-label pad-right">Right</span><span className="pad-label pad-up">Up</span><span className="pad-label pad-down">Down</span><span className="pad-cross pad-cross-x" /><span className="pad-cross pad-cross-y" />
+      {Number.isFinite(measured.y) && Number.isFinite(measured.z) && <span className="pad-measured" style={position(measured)} />}
+      <span className="pad-target" style={position(values)}><svg viewBox="0 0 40 30" aria-hidden="true"><rect x="2" y="2" width="36" height="26" rx="10" /><circle cx="13" cy="14" r="4" /><circle cx="27" cy="14" r="4" /></svg></span>
+    </div><p className="spatial-measured">Measured sideways {Number.isFinite(measured.y) ? measured.y.toFixed(1) : '—'} mm · height {Number.isFinite(measured.z) ? measured.z.toFixed(1) : '—'} mm</p>
+  </div>;
 }
 
 export function OrientationPad({ values, measured = {}, limits = { yaw: 20, pitch: 15 }, disabled, onChange }) {

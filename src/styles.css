@@ -37,6 +37,10 @@
 .primary-workspace .spatial-dial{height:112px}
 .primary-workspace .spatial-fields{gap:4px 8px}
 .primary-workspace .spatial-precision{flex-wrap:wrap}
+.primary-workspace .head-spatial-position{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,.55fr);align-items:center;gap:10px;margin:8px 0}
+.head-depth-control{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px}
+.head-depth-control input{width:100%;min-width:0;accent-color:var(--teal)}
+.head-depth-control output{font-size:11px;color:var(--muted)}
 .head-advanced,.camera-audio-options{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
 .head-advanced>summary,.camera-audio-options>summary,.auxiliary-panel>summary{cursor:pointer;font-size:13px;line-height:1.5}
 .head-advanced .antenna-speed{margin-top:12px}
@@ -55,17 +59,23 @@
 .primary-workspace .model-antenna-strip>button{min-height:32px;padding:4px 8px;font-size:12px}
 .primary-workspace .model-antenna-feedback{width:100%;font-size:11px;color:var(--muted)}
 .primary-workspace .model-details{border-top:1px solid var(--border);padding-top:8px;margin-top:4px;font-size:12px}
+.primary-workspace .model-antenna-strip{display:block}
+.primary-workspace .model-antenna-slider{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:3px 6px;align-items:center;margin:8px 0;font-size:12px}
+.primary-workspace .model-antenna-slider input{grid-column:2;width:100%;min-width:0;margin:0;accent-color:var(--teal)}
+.primary-workspace .model-antenna-measured{grid-column:2/-1;font-size:11px;color:var(--muted)}
+.primary-workspace .model-antenna-precision{display:flex;flex-wrap:wrap;gap:6px}
+.primary-workspace .spatial-position-pad{height:100px}
 @media(min-width:1050px){
-  .primary-workspace{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:start}
+  .primary-workspace{grid-template-columns:minmax(0,1.4fr) minmax(0,.65fr) minmax(0,1.1fr);align-items:start}
   .primary-workspace>.head-controls{grid-column:auto}
   .primary-workspace .camera-frame{aspect-ratio:4/3}
-  .primary-workspace .model-stage{height:280px}
+  .primary-workspace .model-stage{height:150px;min-height:150px}
 }
 @media(max-width:760px){
   .primary-workspace{grid-template-columns:minmax(0,1fr)}
   .primary-workspace>.head-controls{grid-column:auto}
   .workspace-options{grid-template-columns:minmax(0,1fr)}
   .primary-workspace .camera-frame{aspect-ratio:16/9}
-  .primary-workspace .model-stage{height:300px}
+  .primary-workspace .model-stage{height:190px;min-height:150px}
 }
-@media(max-width:520px){.desktop-control{padding:12px 12px 112px}.primary-workspace .camera-toolbar{gap:6px}.primary-workspace .camera-toolbar span{font-size:10px}.primary-workspace .model-stage{height:280px}.desktop-control .activity{flex-wrap:wrap}.desktop-control .activity>span{flex:1 1 100%}.desktop-control .activity-actions{margin-left:auto}}
+@media(max-width:520px){.desktop-control{padding:12px 12px 112px}.primary-workspace .camera-toolbar{gap:6px}.primary-workspace .camera-toolbar span{font-size:10px}.primary-workspace .model-stage{height:180px;min-height:150px}.desktop-control .activity{flex-wrap:wrap}.desktop-control .activity>span{flex:1 1 100%}.desktop-control .activity-actions{margin-left:auto}}

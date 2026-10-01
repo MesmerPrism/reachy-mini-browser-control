@@ -32,9 +32,12 @@ The demo uses a synthetic panorama and simulated feedback. It is approximate
 visualization, not calibrated sensing or physics. The real camera never substitutes
 the panorama. See [demo asset provenance](public-site/DEMO_ASSETS.md).
 
-Desktop controls place the camera, measured 3D model and head inputs side by side.
-Antennas have compact numeric inputs inside the model panel; enable **Move antennas
-in 3D** to drag a solid antenna. Ordinary dragging orbits the view. Smaller screens
+Desktop controls prioritize the camera and head gestures beside a small measured
+3D model. Drag the camera image to turn and nod with the same mapping as the look
+pad. A separate **Shift head** pad moves sideways and vertically; forward/back
+uses a small slider. Antennas have compact sliders inside the model panel, with
+precise inputs and optional 3D dragging under its disclosure. Ordinary model
+dragging orbits the view. Smaller screens
 stack the panels. Audio, tracking, emotes, agent commands and WebXR remain available
 in expandable controls on the same page.
 

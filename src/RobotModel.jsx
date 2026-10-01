@@ -53,6 +53,7 @@ function disposeTree(tree) {
 export default function RobotModel({ control, schematic = false, Text = 'span', antennaControl = null }) {
   const host = useRef(null), runtime = useRef(null), latest = useRef(control);
   const antennaLatest = useRef(antennaControl), moveMode = useRef(false);
+  const sliderGestures = useRef({});
   latest.current = control;
   antennaLatest.current = antennaControl;
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
@@ -284,28 +285,48 @@ export default function RobotModel({ control, schematic = false, Text = 'span', 
     <div className="model-heading"><h2>Reachy in 3D</h2><span className={feedback.frozen ? 'model-feedback stale' : 'model-feedback'} aria-live="polite"><Text>{loading ? 'Loading model…' : error ? 'Model unavailable' : feedback.label}</Text></span></div>
     <div className="model-stage"><div className="model-canvas-host" ref={host} />{(loading || error) && <div className="model-placeholder"><p>{error || 'Loading the Reachy model…'}</p></div>}</div>
     {antennaControl && <div className="model-antenna-strip" aria-label="Antenna controls">
-      <label className="model-antenna-mode"><input type="checkbox" checked={movingAntennas} disabled={antennaControl.disabled || loading || !!error} onChange={event => {
-        if (event.target.checked && !antennaLatest.current?.disabled && !document.hidden) { moveMode.current = true; setMovingAntennas(true); setAntennaError(''); }
-        else turnOff();
-      }} /><Text>Move antennas in 3D</Text></label>
-      {['left', 'right'].map(side => <PrecisionField key={`${antennaControl.sessionKey}:${antennaControl.controlEpoch ?? control.status?.controlEpoch}:${side}`} label={side === 'left' ? 'Left' : 'Right'} value={antennaControl.targets?.[side]} limit={90} disabled={antennaControl.disabled} onChange={value => changeAntenna(side, value)} />)}
+      {['left', 'right'].map(side => {
+        const requested = antennaControl.targets?.[side], measured = antennaControl.measured?.[side];
+        const angle = Number.isFinite(requested) ? Math.max(-90, Math.min(90, requested)) : 0;
+        const requestedText = Number.isFinite(requested) ? `${Number(requested.toFixed(1))}°` : '—';
+        const measuredText = Number.isFinite(measured) ? `${Number(measured.toFixed(1))}°` : '—';
+        return <label key={`${antennaControl.sessionKey}:${antennaControl.controlEpoch ?? control.status?.controlEpoch}:${side}`} className="model-antenna-slider">
+          <span className="model-antenna-side"><Text>{side === 'left' ? 'L' : 'R'}</Text></span>
+          <input type="range" min={-90} max={90} step={1} value={angle} disabled={antennaControl.disabled} aria-label={`${side === 'left' ? 'Left' : 'Right'} antenna target angle`} aria-valuetext={`${requestedText} requested; ${measuredText} measured`}
+            onPointerDown={() => { sliderGestures.current[side] = context(); }}
+            onKeyDown={event => { if (!event.repeat) sliderGestures.current[side] = context(); }}
+            onKeyUp={() => { delete sliderGestures.current[side]; }}
+            onPointerUp={() => { delete sliderGestures.current[side]; }}
+            onPointerCancel={() => { delete sliderGestures.current[side]; }}
+            onBlur={() => { delete sliderGestures.current[side]; }}
+            onChange={event => changeAntenna(side, Number(event.target.value), sliderGestures.current[side] ?? context())} />
+          <output className="model-antenna-target"><Text>{requestedText}</Text></output>
+          <span className="model-antenna-measured"><Text>{`${measuredText} measured`}</Text></span>
+        </label>;
+      })}
       {antennaControl.onCenter && <button type="button" disabled={antennaControl.disabled} onClick={() => {
         const current = antennaLatest.current, captured = context();
         if (!current || current.disabled || document.hidden) return;
         try { const result = current.onCenter?.({ sessionKey: captured.sessionKey, controlEpoch: captured.controlEpoch }); result?.catch?.(problem => { if (sameAntennaContext(captured, context())) setAntennaError(problem.message || 'Antenna centring failed.'); }); }
         catch (problem) { setAntennaError(problem.message || 'Antenna centring failed.'); }
       }}><Text>Centre</Text></button>}
-      <span className="model-antenna-feedback"><Text>{`Measured L ${Number.isFinite(antennaControl.measured?.left) ? antennaControl.measured.left.toFixed(1) : '—'}° · R ${Number.isFinite(antennaControl.measured?.right) ? antennaControl.measured.right.toFixed(1) : '—'}°`}</Text></span>
     </div>}
-    {movingAntennas && <p className="model-caption">Drag a solid antenna; teal outlines show requested angles. From an edge-on view, dragging right increases its angle (2 pixels per degree).</p>}
     {antennaError && <p className="inline-error" role="alert"><Text>{antennaError}</Text></p>}
+    <details className="model-details" onToggle={event => { if (!event.currentTarget.open) turnOff(); }}><summary><Text>Antenna precision & model options</Text></summary>
+    {antennaControl && <div className="model-antenna-options">
+      <div className="model-antenna-precision">{['left', 'right'].map(side => <PrecisionField key={`${antennaControl.sessionKey}:${antennaControl.controlEpoch ?? control.status?.controlEpoch}:${side}`} label={side === 'left' ? 'Left' : 'Right'} value={antennaControl.targets?.[side]} limit={90} disabled={antennaControl.disabled} onChange={value => changeAntenna(side, value)} />)}</div>
+      <label className="model-antenna-mode"><input type="checkbox" checked={movingAntennas} disabled={antennaControl.disabled || loading || !!error} onChange={event => {
+        if (event.target.checked && !antennaLatest.current?.disabled && !document.hidden) { moveMode.current = true; setMovingAntennas(true); setAntennaError(''); }
+        else turnOff();
+      }} /><Text>Move antennas by dragging in 3D</Text></label>
+      {movingAntennas && <p className="model-caption">Drag a solid antenna; teal outlines show requested angles. From an edge-on view, dragging right increases its angle (2 pixels per degree). Closing these options turns 3D movement off.</p>}
+    </div>}
     <div className="model-toolbar" aria-label="3D viewing controls">
       <button disabled={loading || !!error} onClick={() => runtime.current?.view('front')}><Text>Front</Text></button>
       <button disabled={loading || !!error} onClick={() => runtime.current?.view('side')}><Text>Side</Text></button>
       <button disabled={loading || !!error} onClick={() => runtime.current?.view('top')}><Text>Top</Text></button>
       <button disabled={loading || !!error} onClick={() => runtime.current?.view('reset')}><Text>Reset view</Text></button>
     </div>
-    <details className="model-details"><summary><Text>Model details</Text></summary>
     <div className="model-toolbar">
       <label><input type="checkbox" disabled={loading || !!error} checked={wireframe} onChange={event => { setWireframe(event.target.checked); runtime.current?.wireframe(event.target.checked); }} /><Text>Wireframe</Text></label>
       <label><input type="checkbox" disabled={loading || !!error} checked={axes} onChange={event => { setAxes(event.target.checked); if (runtime.current) { runtime.current.axis.visible = event.target.checked; runtime.current.render(); } }} /><Text>Axes</Text></label>

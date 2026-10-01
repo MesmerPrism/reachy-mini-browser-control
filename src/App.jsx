@@ -7,7 +7,8 @@ import HeadTracking from './HeadTracking.jsx';
 import HeadControls from './HeadControls.jsx';
 import AudioControls from './AudioControls.jsx';
 import { useReachyMedia } from './useReachyMedia.js';
-import { Component, lazy, Suspense, useState } from 'react';
+import { useHeadControl } from './useHeadControl.js';
+import { Component, lazy, Suspense, useRef, useState } from 'react';
 
 const RobotModel = lazy(() => import('./RobotModel.jsx'));
 class ModelBoundary extends Component {
@@ -21,6 +22,20 @@ export default function App() {
   const { session, status, command, disabled } = control;
   const media = useReachyMedia({ session, status });
   const [manualHeadEngaged, setManualHeadEngaged] = useState(false);
+  const [xrEngaged, setXrEngaged] = useState(false);
+  const ownership = useRef({ manual: false, xr: false });
+  const reportEngagement = (kind, value) => {
+    ownership.current[kind] = value;
+    if (value) control.cancelAntennaQueue();
+    setManualHeadEngaged(ownership.current.manual || ownership.current.xr);
+    if (kind === 'xr') setXrEngaged(value);
+  };
+  const head = useHeadControl(control, value => reportEngagement('manual', value));
+  const headContextKey = `${session?.token || 'none'}:${control.getControlEpoch()}`;
+  const manualHeadPose = partial => {
+    if (ownership.current.xr || control.isCommandPending() || headContextKey !== `${control.session?.token || 'none'}:${control.getControlEpoch()}`) return false;
+    return head.setPose(partial);
+  };
   const otherControlBusy = !!status.headTrackingActive || !!status.headManualActive || manualHeadEngaged;
   const antennaDisabled = disabled || otherControlBusy || !status.awake || session?.antennaModes !== true || control.invalidSpeed;
   const moveModelAntenna = (side, angle, context) => {
@@ -41,12 +56,12 @@ export default function App() {
     </header>
     {control.error && <p className="error-banner" role="alert">{control.error}</p>}
     <div className="control-grid primary-workspace">
-      <Camera media={media} token={session?.token} demo={session?.mode === 'demo'} connected={status.connected} mediaReady={status.mediaReady} />
+      <Camera media={media} token={session?.token} demo={session?.mode === 'demo'} connected={status.connected} mediaReady={status.mediaReady} aimControl={{ values: head.targets, limits: head.limits, disabled: head.disabled || xrEngaged, contextKey: headContextKey, onChange: manualHeadPose }} />
       <ModelBoundary><Suspense fallback={<section className="panel robot-model"><h2>Reachy in 3D</h2><p>Loading model…</p></section>}><RobotModel control={control} schematic={import.meta.env.VITE_REACHY_MODEL !== 'private-cad'} antennaControl={{ targets: control.targets, measured: status.antennas, disabled: antennaDisabled, sessionKey: session?.token, controlEpoch: control.getControlEpoch(), onChange: moveModelAntenna, onCenter: context => {
         if (antennaDisabled || control.isCommandPending() || context?.sessionKey !== control.session?.token || context?.controlEpoch !== control.getControlEpoch()) throw Error('Antenna control context expired or motion is blocked.');
         return control.centre();
       } }} /></Suspense></ModelBoundary>
-      <HeadControls control={control} videoElement={media.videoRef.current} onEngagementChange={value => { if (value) control.cancelAntennaQueue(); setManualHeadEngaged(value); }} />
+      <HeadControls control={control} head={head} onManualPose={manualHeadPose} contextKey={headContextKey} xrEngaged={xrEngaged} videoElement={media.videoRef.current} onXrEngagementChange={value => reportEngagement('xr', value)} />
     </div>
     <div className="workspace-options">
       <details className="auxiliary-panel"><summary>Antenna speed settings</summary><Antennas policyOnly targets={control.targets} measured={status.antennas} disabled={antennaDisabled} optionsDisabled={disabled || otherControlBusy || session?.antennaModes !== true} bridgeUpdateRequired={!!session && session.antennaModes !== true} setAngle={control.setAngle} centre={control.centre} limitSpeed={control.limitSpeed} speedLimit={control.speedLimit} changeLimitSpeed={control.changeLimitSpeed} changeSpeedLimit={control.changeSpeedLimit} invalidSpeed={control.invalidSpeed} /></details>

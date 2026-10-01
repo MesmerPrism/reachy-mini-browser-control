@@ -215,11 +215,17 @@ Review [third-party notices](../THIRD_PARTY_NOTICES.md) before redistribution.
 ## Spatial controls, page console and WebXR
 
 The look-direction pad combines turn and nod. Click or drag the head glyph to
-set tilt. Antennas now share the 3D panel: enable **Move antennas in 3D**, then drag
-a solid antenna. Ordinary dragging orbits the view. From an edge-on view, a relative
+set tilt. Antennas now share the 3D panel: enable **Move antennas by dragging in 3D**, then drag
+a solid antenna from **Antenna precision & model options**. Compact Left/Right
+sliders are the primary antenna inputs. Ordinary dragging orbits the view. From an edge-on view, a relative
 horizontal drag changes the angle. Teal wireframe outlines show requested antenna
 positions; solid geometry continues to show measured feedback. Compact Left/Right
-numeric inputs work without entering the 3D movement mode. Head gesture arrow keys
+numeric inputs in the disclosure work without entering the 3D movement mode.
+The camera image itself also accepts turn/nod dragging with the look-pad mapping,
+without an overlay. The **Shift head** pad moves left/right and up/down in native
+millimetres; forward/back uses a compact slider. All gestures use the same bounded
+command paths and preserve omitted axes. Stop, a changed control epoch or a lost
+gate cancels active camera/translation gestures. Head gesture arrow keys
 adjust one degree (five with Shift); Home centers the selected gesture. Fields accept drafts;
 press Enter or leave the field to apply, and Escape to discard. Position and
 speed settings are available under the advanced disclosure. Desktop camera, model

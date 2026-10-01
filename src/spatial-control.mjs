@@ -10,6 +10,10 @@ export function padTarget(clientX, clientY, rect, limits) {
   const pitch = boundTarget((2 * (clientY - rect.top) / rect.height - 1) * limits.pitch, limits.pitch);
   return yaw === null || pitch === null ? null : { yaw, pitch };
 }
+export function positionPadTarget(clientX, clientY, rect, limits) {
+  const target = padTarget(clientX, clientY, rect, { yaw: limits.y, pitch: limits.z });
+  return target ? { y: target.yaw, z: -target.pitch || 0 } : null;
+}
 export function dialTarget(clientX, clientY, rect, limit) {
   if (![clientX, clientY, rect?.left, rect?.top, rect?.width, rect?.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0) return null;
   const x = (clientX - rect.left) / rect.width * 180 - 90;

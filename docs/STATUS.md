@@ -55,6 +55,14 @@ horizontal overflow. **305 offline tests** and both production builds passed.
 The source inventory includes **135 reviewed files**. This pass adds no physical
 robot, camera/audio capture or headset validation.
 
+The **0.3.1** revision prioritizes camera and gesture controls over a narrow 3D
+panel. Compact antenna sliders return, a visible sideways/vertical translation
+pad and forward/back slider complement look/tilt gestures, and dragging the camera
+uses the same turn/nod mapping as the look pad without a visual overlay. Browser
+simulation verified camera-to-head requested/measured feedback, position input,
+antenna slider input and mobile reflow without horizontal overflow. **306 offline
+tests** and both production builds passed. No new physical validation is claimed.
+
 The daemon 1.11 candidate requires attended browser/robot transport, telemetry,
 camera/audio, identity and safe control checks before a separately reviewed gate
 change. Offline success alone is insufficient. Read [candidate compatibility](DAEMON_1_11_COMPATIBILITY.md)
