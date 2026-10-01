@@ -32,6 +32,12 @@ The demo uses a synthetic panorama and simulated feedback. It is approximate
 visualization, not calibrated sensing or physics. The real camera never substitutes
 the panorama. See [demo asset provenance](public-site/DEMO_ASSETS.md).
 
+Desktop controls place the camera, measured 3D model and head inputs side by side.
+Antennas have compact numeric inputs inside the model panel; enable **Move antennas
+in 3D** to drag a solid antenna. Ordinary dragging orbits the view. Smaller screens
+stack the panels. Audio, tracking, emotes, agent commands and WebXR remain available
+in expandable controls on the same page.
+
 ## Run locally
 
 Use Node **24** (CI baseline; Vite also supports Node 22.12+). Clone this repository

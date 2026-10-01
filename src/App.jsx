@@ -22,6 +22,11 @@ export default function App() {
   const media = useReachyMedia({ session, status });
   const [manualHeadEngaged, setManualHeadEngaged] = useState(false);
   const otherControlBusy = !!status.headTrackingActive || !!status.headManualActive || manualHeadEngaged;
+  const antennaDisabled = disabled || otherControlBusy || !status.awake || session?.antennaModes !== true || control.invalidSpeed;
+  const moveModelAntenna = (side, angle, context) => {
+    if (antennaDisabled || control.isCommandPending() || context?.sessionKey !== control.session?.token || context?.controlEpoch !== control.getControlEpoch()) throw Error('Antenna control context expired or motion is blocked.');
+    return control.setAngle(side, angle);
+  };
   const stopMotion = () => { media.stopTalk(); command('stop'); };
   const power = () => { if (status.awake) media.disableMicrophone(); command(status.awake ? 'sleep' : 'wake'); };
   return <main className="desktop-control">
@@ -35,15 +40,20 @@ export default function App() {
       </div>
     </header>
     {control.error && <p className="error-banner" role="alert">{control.error}</p>}
-    <div className="control-grid">
+    <div className="control-grid primary-workspace">
       <Camera media={media} token={session?.token} demo={session?.mode === 'demo'} connected={status.connected} mediaReady={status.mediaReady} />
-      <ModelBoundary><Suspense fallback={<section className="panel robot-model"><h2>Reachy in 3D</h2><p>Loading model…</p></section>}><RobotModel control={control} schematic={import.meta.env.VITE_REACHY_MODEL !== 'private-cad'} /></Suspense></ModelBoundary>
+      <ModelBoundary><Suspense fallback={<section className="panel robot-model"><h2>Reachy in 3D</h2><p>Loading model…</p></section>}><RobotModel control={control} schematic={import.meta.env.VITE_REACHY_MODEL !== 'private-cad'} antennaControl={{ targets: control.targets, measured: status.antennas, disabled: antennaDisabled, sessionKey: session?.token, controlEpoch: control.getControlEpoch(), onChange: moveModelAntenna, onCenter: context => {
+        if (antennaDisabled || control.isCommandPending() || context?.sessionKey !== control.session?.token || context?.controlEpoch !== control.getControlEpoch()) throw Error('Antenna control context expired or motion is blocked.');
+        return control.centre();
+      } }} /></Suspense></ModelBoundary>
+      <HeadControls control={control} videoElement={media.videoRef.current} onEngagementChange={value => { if (value) control.cancelAntennaQueue(); setManualHeadEngaged(value); }} />
     </div>
-    <Antennas targets={control.targets} measured={status.antennas} disabled={disabled || otherControlBusy || !status.awake || session?.antennaModes !== true || control.invalidSpeed} optionsDisabled={disabled || otherControlBusy || session?.antennaModes !== true} bridgeUpdateRequired={!!session && session.antennaModes !== true} setAngle={control.setAngle} centre={control.centre} limitSpeed={control.limitSpeed} speedLimit={control.speedLimit} changeLimitSpeed={control.changeLimitSpeed} changeSpeedLimit={control.changeSpeedLimit} invalidSpeed={control.invalidSpeed} />
-    <AudioControls control={control} media={media} />
-    <HeadControls control={control} videoElement={media.videoRef.current} onEngagementChange={value => { if (value) control.cancelAntennaQueue(); setManualHeadEngaged(value); }} />
-    <HeadTracking control={{ ...control, disabled: disabled || !!status.headManualActive || manualHeadEngaged }} />
-    <Emotes emotes={control.emotes} error={control.catalogError} disabled={disabled || otherControlBusy || !status.awake} onPlay={id => command('emote', { id })} />
+    <div className="workspace-options">
+      <details className="auxiliary-panel"><summary>Antenna speed settings</summary><Antennas policyOnly targets={control.targets} measured={status.antennas} disabled={antennaDisabled} optionsDisabled={disabled || otherControlBusy || session?.antennaModes !== true} bridgeUpdateRequired={!!session && session.antennaModes !== true} setAngle={control.setAngle} centre={control.centre} limitSpeed={control.limitSpeed} speedLimit={control.speedLimit} changeLimitSpeed={control.changeLimitSpeed} changeSpeedLimit={control.changeSpeedLimit} invalidSpeed={control.invalidSpeed} /></details>
+      <details className="auxiliary-panel"><summary>Audio &amp; push to talk</summary><AudioControls control={control} media={media} /></details>
+      <details className="auxiliary-panel"><summary>Webcam head tracking{status.headTrackingActive ? ' — active' : ''}</summary><HeadTracking control={{ ...control, disabled: disabled || !!status.headManualActive || manualHeadEngaged }} /></details>
+      <details className="auxiliary-panel"><summary>Emotes</summary><Emotes emotes={control.emotes} error={control.catalogError} disabled={disabled || otherControlBusy || !status.awake} onPlay={id => command('emote', { id })} /></details>
+    </div>
     <footer className="activity">
       <span aria-live="polite">{status.blockedReason || (status.activity ? status.message : !status.awake ? 'Asleep — press Wake to use the controls and expose the camera.' : status.message || 'Ready')}</span>
       <div className="activity-actions" aria-label="Motion controls">

@@ -3,7 +3,7 @@ import panoramaUrl from './demo-room-panorama.png';
 import { measuredPanoramaRotation, panoramaCameraRays, reprojectPanorama } from '../src/panorama-camera.mjs';
 import FitText from './FitText.jsx';
 
-export default function SimulatedCamera({ measured }) {
+export default function SimulatedCamera({ measured, compact = false }) {
   const host = useRef(null), latest = useRef(measured);
   const [message, setMessage] = useState('Loading simulated panorama…');
   latest.current = measured;
@@ -68,6 +68,6 @@ export default function SimulatedCamera({ measured }) {
   return <>
     <div className="simulated-camera-stage" ref={host} />
     <FitText as="p" aria-live="polite">{message}</FitText>
-    <FitText as="p">Illustrated 360° room, not a robot feed. Turn, nod and tilt follow measured simulation telemetry. Neutral looks at the panorama center. Translation has no parallax. Approximate 70° vertical field of view; not calibrated to Reachy’s camera.</FitText>
+    {compact ? <details className="camera-options"><summary>About the simulated camera</summary><p>Illustrated 360° room, not a robot feed. Turn, nod and tilt follow measured simulation telemetry. Translation has no parallax. Approximate 70° vertical field of view; not calibrated to Reachy’s camera.</p></details> : <FitText as="p">Illustrated 360° room, not a robot feed. Turn, nod and tilt follow measured simulation telemetry. Neutral looks at the panorama center. Translation has no parallax. Approximate 70° vertical field of view; not calibrated to Reachy’s camera.</FitText>}
   </>;
 }
