@@ -128,3 +128,23 @@ h1,h2,h3,p,li,summary { overflow-wrap: break-word; } .control-section>button,.co
 .controller-page.large .spatial-precision input { width:4em; }
 @media(max-width:1000px) { .controller-workspace { grid-template-columns:repeat(2,minmax(0,1fr)); } .operator-head { grid-column:1/-1; } .operator-head .spatial-orientation { max-width:600px; } }
 @media(max-width:700px) { .controller-page header,.controller-page main,.controller-page footer { padding:12px; } .controller-workspace,.controller-options { grid-template-columns:minmax(0,1fr); } .controller-bar { align-items:start; flex-direction:column; gap:0; } .controller-bar .actions { margin-top:0; } .controller-page button,.controller-page select { min-height:44px; } .controller-workspace .model-stage,.controller-workspace .simulated-camera-stage,.controller-workspace .operator-camera>video { height:260px; } .model-antenna-strip>button,.controller-workspace .model-toolbar button { min-height:36px; } }
+/* Camera and gesture inputs take priority over the small measured model. */
+.controller-page .controller-workspace { grid-template-columns:minmax(0,1.45fr) minmax(180px,.55fr) minmax(350px,1fr); }
+.controller-page .controller-workspace .model-stage { height:150px; }
+.controller-page .controller-workspace .camera-aim-surface>video { height:clamp(260px,38vh,370px); aspect-ratio:auto; }
+.controller-page .controller-workspace .simulated-camera-stage { height:clamp(260px,38vh,370px); }
+.controller-page .model-antenna-strip { display:block; padding:4px 0; }
+.model-antenna-slider { display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:3px 6px; align-items:center; margin:8px 0; font-size:12px; }
+.model-antenna-slider input[type=range] { grid-column:2; margin:0; min-height:24px; width:100%; }
+.model-antenna-target { font-variant-numeric:tabular-nums; }
+.model-antenna-measured { grid-column:2/-1; font-size:11px; color:#4c5a50; }
+.model-antenna-options { font-size:12px; }
+.model-antenna-precision { display:flex; flex-wrap:wrap; gap:6px; }
+.controller-page .operator-head .spatial-pad { height:100px; margin:6px 0; }
+.controller-page .operator-head .spatial-orientation { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
+.controller-page .operator-head .spatial-translation { margin-top:8px; }
+.controller-page .operator-head .spatial-position-pad { height:100px; }
+.camera-aim-help { font-size:12px; margin:6px 0; }
+.controller-page.large .controller-workspace { grid-template-columns:minmax(0,1fr); }
+@media(max-width:1000px) { .controller-page .controller-workspace { grid-template-columns:minmax(0,1.5fr) minmax(180px,.7fr); } }
+@media(max-width:700px) { .controller-page .controller-workspace { grid-template-columns:minmax(0,1fr); } .controller-page .controller-workspace .model-stage { height:130px; } .model-antenna-slider { font-size:14px; } .model-antenna-slider input[type=range] { min-height:32px; } }

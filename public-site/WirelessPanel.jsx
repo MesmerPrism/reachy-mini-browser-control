@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { WirelessControl, WIRELESS_EMOTES } from '../src/wireless-control.mjs';
 import { createWirelessTalk } from '../src/wireless-audio.mjs';
 import FitText from './FitText.jsx';
-import { OrientationPad, AngleControl, PrecisionField } from '../src/SpatialControls.jsx';
+import { OrientationPad, AngleControl, PrecisionField, PositionPad, CameraAimSurface } from '../src/SpatialControls.jsx';
 import AgentConsole from '../src/AgentConsole.jsx';
 import { createCommandFlight } from '../src/command-flight.mjs';
 const WebXRControls = lazy(() => import('../src/WebXRControls.jsx'));
@@ -138,6 +138,13 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
   const antennaControl = { targets: antennas, measured: status.measured?.antennas, disabled: !canMove || following || xrEngaged,
     ...antennaContext, onChange: (side, value, context) => { verifyAntennaContext(context); return submitAntennas({ [side]: value }); },
     onCenter: context => { verifyAntennaContext(context); return submitAntennas({ left: 0, right: 0 }); } };
+  const headGestureKey = `${antennaKey}:${status.controlEpoch}:${stopRevision}`;
+  const manualHead = partial => {
+    try {
+      if (latest.current.xrEngaged || control.current?.snapshot().controlEpoch !== status.controlEpoch) throw Error('Head control context changed.');
+      return submitHead(partial);
+    } catch (problem) { setError(problem.message); return false; }
+  };
   return <>
     {!status.connected && initialDemo && <div className="actions"><button type="button" disabled={busy} onClick={() => void connect(true)}>Start simulation</button></div>}
     {!status.connected && !initialDemo && <form className="connection-form" onSubmit={event => { event.preventDefault(); void connect(false); }}>
@@ -154,8 +161,11 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
     <div className="connected-surface" hidden={!status.connected}>
       <div className="controller-workspace">
         <section className="control-section operator-camera"><h2>{initialDemo || demo ? 'Simulated camera' : 'Reachy camera'}</h2>
-          <video ref={video} autoPlay muted playsInline hidden={initialDemo || demo && status.connected} />
-          {demo && status.connected && <Suspense fallback={<p>Loading simulated camera…</p>}><SimulatedCamera measured={status.measured} compact /></Suspense>}
+          <CameraAimSurface values={head} hidden={initialDemo || demo && status.connected} disabled={!canMove || following || xrEngaged || demo} onChange={manualHead} contextKey={headGestureKey}>
+            <video ref={video} autoPlay muted playsInline hidden={initialDemo || demo && status.connected} />
+          </CameraAimSurface>
+          {demo && status.connected && <Suspense fallback={<p>Loading simulated camera…</p>}><SimulatedCamera measured={status.measured} compact aimControl={{values:head,disabled:!canMove || following || xrEngaged,onChange:manualHead,contextKey:headGestureKey}} /></Suspense>}
+          <p className="camera-aim-help">Drag the camera view to turn and nod.</p>
           {!demo && <p className="media-note">Live WebRTC feed · audio off until enabled.</p>}
           <details className="camera-options"><summary>Listening & camera details</summary>
             <label className="checkbox"><input type="checkbox" checked={listen} disabled={!status.connected || demo} onChange={event => setListen(event.target.checked)} />Listen to Reachy’s microphone</label>
@@ -165,9 +175,10 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
         </section>
         <Suspense fallback={<section className="control-section"><h2>Reachy in 3D</h2><p>Loading model…</p></section>}><RobotModel control={modelControl} schematic Text={FitText} antennaControl={antennaControl} /></Suspense>
         <section className="control-section operator-head"><h2>Head movement</h2>
-          <div className="spatial-orientation"><OrientationPad values={head} measured={status.measured?.head} disabled={!canMove || following || xrEngaged} onChange={submitHead} /><AngleControl label="Tilt" value={head.roll} measured={status.measured?.head.roll} limit={15} disabled={!canMove || following || xrEngaged} onChange={roll => submitHead({ roll })} /></div>
-          <button disabled={!canMove || following || xrEngaged} onClick={() => submitHead({ yaw: 0, pitch: 0, roll: 0 })}>Center orientation</button>
+          <div className="spatial-orientation"><OrientationPad values={head} measured={status.measured?.head} disabled={!canMove || following || xrEngaged} onChange={manualHead} /><AngleControl label="Tilt" value={head.roll} measured={status.measured?.head.roll} limit={15} disabled={!canMove || following || xrEngaged} onChange={roll => manualHead({ roll })} /></div>
+          <button disabled={!canMove || following || xrEngaged} onClick={() => manualHead({ yaw: 0, pitch: 0, roll: 0 })}>Center orientation</button>
           <p className="spatial-help">Solid = requested · dashed = measured. Directions are Reachy’s own.</p>
+          <div className="spatial-translation"><PositionPad values={head} measured={status.measured?.head} limits={{y:10,z:10}} disabled={!canMove || following || xrEngaged} onChange={manualHead} contextKey={headGestureKey} /><div className="translation-depth"><label>Forward / back · {head.x.toFixed(1)} mm<input type="range" min={-10} max={10} step={.1} value={head.x} disabled={!canMove || following || xrEngaged} aria-label="Head forward and back position" onChange={event => manualHead({x:Number(event.target.value)})} /></label><p className="spatial-measured">Measured {degrees(status.measured?.head.x)} mm</p><button disabled={!canMove || following || xrEngaged} onClick={() => manualHead({x:0,y:0,z:0})}>Center position</button></div></div>
           <details className="spatial-position"><summary>Position & speed</summary><p>Head position in millimetres from the neutral origin.</p><div className="spatial-position-fields">{['x','y','z'].map(axis => <PrecisionField key={axis} label={names[axis]} value={head[axis]} limit={10} unit="mm" disabled={!canMove || following || xrEngaged} onChange={value => submitHead({ [axis]: value })} />)}</div><button disabled={!canMove || following || xrEngaged} onClick={() => submitHead({ x: 0, y: 0, z: 0 })}>Center position</button><label className="compact-speed">Angular speed <input type="number" aria-label="Angular speed limit" min={5} max={30} value={speed} onChange={event => {const next=Number(event.target.value);if(Number.isFinite(next)&&next>=5&&next<=30)setSpeed(next);}} /> °/s</label><p>Translation is capped at 10 mm/s.</p></details>
         </section>
       </div>

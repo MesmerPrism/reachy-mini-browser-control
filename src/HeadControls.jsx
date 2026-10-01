@@ -1,31 +1,28 @@
-import { lazy, Suspense, useState, useRef } from 'react';
+import { lazy, Suspense, useRef } from 'react';
 const WebXRControls = lazy(() => import('./WebXRControls.jsx'));
-import { useHeadControl } from './useHeadControl';
 
-import { OrientationPad, AngleControl, PrecisionField } from './SpatialControls';
+import { OrientationPad, AngleControl, PositionPad, PrecisionField } from './SpatialControls';
 
-export default function HeadControls({ control, onEngagementChange, videoElement }) {
-
-  const [xrEngaged, setXrEngaged] = useState(false);
-  const engagement = useRef({ manual: false, xr: false, epoch: null });
-  const reportEngagement = (kind, value) => { engagement.current[kind] = value; onEngagementChange?.(engagement.current.manual || engagement.current.xr); };
-  const head = useHeadControl(control, value => reportEngagement('manual', value));
+export default function HeadControls({ control, head, onManualPose, contextKey, xrEngaged, onXrEngagementChange, videoElement }) {
+  const engagement = useRef({ epoch: null });
 
   const bridgeRequired = control.session?.headManualPoseModes !== true;
 
-  const position = (axis, label) => <div key={axis}><PrecisionField label={label} unit="mm" limit={head.limits[axis]} value={head.targets[axis]} disabled={head.disabled || xrEngaged} onChange={value => head.setAxis(axis, value)} /><p className="spatial-measured">Measured {Number.isFinite(head.measured[axis]) ? `${Number(head.measured[axis].toFixed(1))} mm` : "—"}</p></div>;
+  const position = (axis, label) => <div key={axis}><PrecisionField label={label} unit="mm" limit={head.limits[axis]} value={head.targets[axis]} disabled={head.disabled || xrEngaged} onChange={value => onManualPose({ [axis]: value })} /><p className="spatial-measured">Measured {Number.isFinite(head.measured[axis]) ? `${Number(head.measured[axis].toFixed(1))} mm` : "—"}</p></div>;
 
   return <section className="panel head-controls">
 
     <h2>Head</h2><p className="panel-caption">Point the gaze; drag the head to tilt.</p>
 
-    <div className="spatial-orientation"><OrientationPad values={head.targets} measured={head.measured} limits={head.limits} disabled={head.disabled || xrEngaged} onChange={head.setPose} /><AngleControl label="Tilt" value={head.targets.roll} measured={head.measured.roll} limit={head.limits.roll} disabled={head.disabled || xrEngaged} onChange={value => head.setAxis('roll', value)} /></div>
+    <div className="spatial-orientation"><OrientationPad values={head.targets} measured={head.measured} limits={head.limits} disabled={head.disabled || xrEngaged} onChange={onManualPose} /><AngleControl label="Tilt" value={head.targets.roll} measured={head.measured.roll} limit={head.limits.roll} disabled={head.disabled || xrEngaged} onChange={value => onManualPose({ roll: value })} /></div>
 
-    <details className="spatial-position"><summary>Head position  /  millimetres</summary><p className="panel-caption">Position is in Reachy’s frame: positive values move forward, left and up. Zero is the daemon’s neutral head origin.</p>
+    <div className="head-spatial-position"><PositionPad values={head.targets} measured={head.measured} limits={head.limits} disabled={head.disabled || xrEngaged} onChange={onManualPose} contextKey={contextKey} /><label className="head-depth-control"><span>Forward / back</span><input aria-label="Head forward or back in millimetres" type="range" min={-head.limits.x} max={head.limits.x} step="0.1" value={Math.max(-head.limits.x, Math.min(head.limits.x, head.targets.x))} disabled={head.disabled || xrEngaged} onChange={event => onManualPose({ x: Number(event.target.value) })} /><output>{Number(head.targets.x.toFixed(1))} mm</output></label></div>
 
-    <div className="spatial-position-fields">{position('x', 'Forward/back')}{position('y', 'Left/right')}{position('z', 'Up/down')}</div><button className="centre-button" disabled={head.disabled || xrEngaged} onClick={head.centrePosition}>Centre position</button></details>
+    <details className="spatial-position"><summary>Precise position / millimetres</summary><p className="panel-caption">Position is in Reachy’s frame: positive values move forward, left and up. Zero is the daemon’s neutral head origin.</p>
 
-    <div className="head-centre-actions"><button className="centre-button" disabled={head.disabled || xrEngaged} onClick={head.centreRotation}>Centre rotation</button></div>
+    <div className="spatial-position-fields">{position('x', 'Forward/back')}{position('y', 'Left/right')}{position('z', 'Up/down')}</div><button className="centre-button" disabled={head.disabled || xrEngaged} onClick={() => onManualPose({ x: 0, y: 0, z: 0 })}>Centre position</button></details>
+
+    <div className="head-centre-actions"><button className="centre-button" disabled={head.disabled || xrEngaged} onClick={() => onManualPose({ yaw: 0, pitch: 0, roll: 0 })}>Centre rotation</button></div>
 
     <p className="hold-caption">Targets hold when released. Centre rotation keeps position.</p>
 
@@ -33,7 +30,7 @@ export default function HeadControls({ control, onEngagementChange, videoElement
 
     <p className="speed-help" id="head-speed-help">{bridgeRequired ? 'Restart the updated bridge to enable all six head controls.' : control.session?.headTrackingMotion !== true ? 'Head movement awaits the mapping check.' : head.invalidSpeed ? 'Enter an angular speed from 5 to 120 deg/s and a position speed from 1 to 50 mm/s.' : head.limitSpeed ? 'Application speed caps; network delays can reduce speed. Changes apply to your next input.' : 'Off: direct control. Changes apply to your next input.'}</p></details>
 
-    <details className="head-advanced"><summary>WebXR headset{xrEngaged ? ' — active' : ''}</summary><Suspense fallback={<p>Loading headset view…</p>}><WebXRControls snapshot={{ ...control.status, headAngles: head.measured }} requested={head.targets} limits={head.limits} allowed={!head.disabled} demo={control.session?.mode === 'demo'} onHeadChange={partial => { if(engagement.current.epoch !== control.getControlEpoch() || head.setPose(partial)!==true)throw Error('Head request was not accepted.'); }} onStop={() => { engagement.current.epoch=null; control.command('stop'); }} stopRevision={control.stopRevision} connectionKey={control.session?.token} videoElement={videoElement} onEngagementChange={value => { engagement.current.epoch=value ? control.getControlEpoch() : null;setXrEngaged(value);reportEngagement('xr', value); }} /></Suspense></details>
+    <details className="head-advanced"><summary>WebXR headset{xrEngaged ? ' — active' : ''}</summary><Suspense fallback={<p>Loading headset view…</p>}><WebXRControls snapshot={{ ...control.status, headAngles: head.measured }} requested={head.targets} limits={head.limits} allowed={!head.disabled} demo={control.session?.mode === 'demo'} onHeadChange={partial => { if(engagement.current.epoch !== control.getControlEpoch() || head.setPose(partial)!==true)throw Error('Head request was not accepted.'); }} onStop={() => { engagement.current.epoch=null; control.command('stop'); }} stopRevision={control.stopRevision} connectionKey={control.session?.token} videoElement={videoElement} onEngagementChange={value => { engagement.current.epoch=value ? control.getControlEpoch() : null;onXrEngagementChange?.(value); }} /></Suspense></details>
     {(bridgeRequired || control.session?.headTrackingMotion !== true || head.invalidSpeed) && <p className="speed-help">{bridgeRequired ? 'Restart the updated bridge to enable head controls.' : control.session?.headTrackingMotion !== true ? 'Head movement awaits the mapping check.' : 'Check the head speed limits before moving.'}</p>}
     {head.error && <p className="inline-error" role="alert">{head.error}</p>}
 

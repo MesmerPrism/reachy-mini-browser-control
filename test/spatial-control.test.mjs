@@ -30,3 +30,13 @@ test('invalid layouts and nonfinite inputs produce no gesture target', () => {
   assert.equal(boundTarget(12, -15), null);
   assert.deepEqual(padTarget(120, 80, rect, { yaw: 0, pitch: 0 }), { yaw: 0, pitch: 0 });
 });
+test('translation pad follows native left/up signs, clamps bounds and rejects invalid geometry', async () => {
+  const { positionPadTarget } = await import('../src/spatial-control.mjs');
+  const rect={left:0,top:0,width:100,height:100},limits={y:10,z:8};
+  assert.deepEqual(positionPadTarget(0,0,rect,limits),{y:10,z:8});
+  assert.deepEqual(positionPadTarget(100,100,rect,limits),{y:-10,z:-8});
+  assert.deepEqual(positionPadTarget(50,50,rect,limits),{y:0,z:0});
+  assert.deepEqual(positionPadTarget(-100,200,rect,limits),{y:10,z:-8});
+  assert.equal(positionPadTarget(0,0,{...rect,width:0},limits),null);
+  assert.equal(positionPadTarget(NaN,0,rect,limits),null);
+});
