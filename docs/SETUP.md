@@ -234,7 +234,7 @@ and WebXR are expandable sections on that same page. Solid head handles show
 requested targets; dashed markers and labelled values show measured feedback.
 Directions are Reachy's own. Body yaw is measured only and stays unchanged.
 
-Open **Agent console** in the Controls or Demo view. `help`, `status` and
+Open **Agent console** in the Controls or Demo view. `help`, `status`, `diagnostics` and
 `capabilities` are read-only. After explicitly arming writes for that connection,
 use `head yaw=2 pitch=-2`, `antennas left=10 right=-10`, `wake`, `sleep` or `stop`.
 Head angles are degrees; x/y/z use millimetres. Omitted axes keep measured values.
@@ -243,7 +243,14 @@ firmware or change networks. Motion uses the existing conservative controller
 limits. Stop is a software request with the transport's existing limitations.
 
 Automation can call `window.reachyAgent.run('status')` and
-`window.reachyAgent.help()`. Call `window.reachyAgent.arm()` before a write, then
+`window.reachyAgent.help()`. `window.reachyAgent.diagnostics()` returns a bounded
+summary from this tab's current snapshot without arming or new network requests.
+The **Connection & diagnostics** disclosure prepares the same redacted summary
+for copying. It excludes identities, addresses, credentials and raw error text.
+Receipt age measures delivery to this controller, not sensor age. Hosted
+ownership checks cover this WebRTC session only; intended-identity matching and
+local bridge recovery evidence are not inferred when unavailable.
+Call `window.reachyAgent.arm()` before a write, then
 `await window.reachyAgent.run('head yaw=2')`. No cursor interaction is required.
 Arming requires a visible, ready connection and does not connect, wake or move
 Reachy. Call `window.reachyAgent.disarm()` to revoke agent writes and discard unsent
@@ -252,7 +259,7 @@ Explicit Stop remains callable on the active connection when stale telemetry
 revokes movement authorization; it does not require arming.
 Writes remain off until explicitly armed in the visible tab,
 and are disabled when the connection changes, following owns the controls or the
-tab is hidden. Optional WebMCP exposes read-only `reachy_help`, `reachy_status`
+tab is hidden. Optional WebMCP exposes read-only `reachy_help`, `reachy_status`, `reachy_diagnostics`
 and `reachy_capabilities`, plus `reachy_arm`, `reachy_disarm` and
 `reachy_command({command: 'head yaw=2'})`. Agents should read status, arm explicitly,
 issue one bounded command and inspect measured feedback; a queued response does
@@ -260,6 +267,13 @@ not confirm arrival. Re-arm after Wake or other actions revoke the write session
 The console works when that experimental
 browser API is absent. Tool registrations use lifecycle-bound abort signals as in
 [Chrome's imperative API](https://developer.chrome.com/docs/ai/webmcp/imperative-api).
+
+Hosted head and antenna targets expire 15 seconds after the last deliberate
+input. Only new input renews that deadline; the sending loop never renews it.
+Convergence uses a later received measurement within the existing explicit-axis
+tolerance and is not proof of application or physical arrival. Expiry drops
+unsent requests without sending Stop or a hold. Inspect measured values before
+another request and use explicit Stop when required.
 
 The **Headset view** uses the same page and connection. Open the HTTPS page in a
 WebXR headset browser, then choose Enter VR. Camera media uses the existing feed;

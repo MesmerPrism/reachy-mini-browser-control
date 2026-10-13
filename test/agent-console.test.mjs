@@ -31,13 +31,13 @@ test('console forwards adapter epoch and only the requested axes', async () => {
 test('optional WebMCP registers only read-only tools and cleans up its own registrations', () => {
   const tools = [], removed = [];
   const cleanup = registerAgentTools({ registerTool: t => tools.push(t), unregisterTool: n => removed.push(n) }, async () => ({}));
-  assert.deepEqual(tools.map(t => t.name), ['reachy_help', 'reachy_status', 'reachy_capabilities']);
+  assert.deepEqual(tools.map(t => t.name), ['reachy_help', 'reachy_status', 'reachy_capabilities', 'reachy_diagnostics']);
   assert.ok(tools.every(t => t.annotations.readOnlyHint)); cleanup(); assert.deepEqual(removed, tools.map(t => t.name));
 });
 test('current document WebMCP registration uses AbortSignal without legacy unregisterTool', () => {
   const signals = [];
   const cleanup = registerAgentTools({ registerTool: (_, options) => { signals.push(options.signal); return Promise.resolve(); } }, async () => ({}));
-  assert.equal(signals.length, 3); assert.ok(signals.every(signal => !signal.aborted));
+  assert.equal(signals.length, 4); assert.ok(signals.every(signal => !signal.aborted));
   cleanup(); assert.ok(signals.every(signal => signal.aborted));
 });
 
@@ -106,8 +106,8 @@ test('armed API retains bounded grammar and disposal expires saved calls', async
 test('WebMCP exposes explicit consequential arm/disarm/command and stops saved tools after cleanup', async () => {
   const f = agentFixture(), registered = [];
   const cleanup = registerAgentTools({ registerTool: tool => { registered.push(tool); } }, text => f.session.run(text), f.session);
-  assert.deepEqual(registered.map(tool => tool.name), ['reachy_help', 'reachy_status', 'reachy_capabilities', 'reachy_arm', 'reachy_disarm', 'reachy_command']);
-  const writes = registered.slice(3);
+  assert.deepEqual(registered.map(tool => tool.name), ['reachy_help', 'reachy_status', 'reachy_capabilities', 'reachy_diagnostics', 'reachy_arm', 'reachy_disarm', 'reachy_command']);
+  const writes = registered.slice(4);
   assert.ok(writes.every(tool => tool.annotations.consequentialHint && !tool.annotations.readOnlyHint));
   const command = registered.find(tool => tool.name === 'reachy_command');
   await assert.rejects(command.execute({ command: 'wake' }), /disabled/);
@@ -121,4 +121,28 @@ test('WebMCP exposes explicit consequential arm/disarm/command and stops saved t
   cleanup();
   await assert.rejects(command.execute({ command: 'wake' }), /expired/);
   assert.equal(f.sent.length, 1);
+});
+
+test('diagnostics command and WebMCP tool are read-only and cannot arm or execute writes', async () => {
+  assert.deepEqual(parseAgentCommand('diagnostics'), { name: 'diagnostics', write: false });
+  assert.throws(() => parseAgentCommand('diagnostics wake'), /no arguments/);
+  const f = agentFixture();
+  f.context.diagnosticsContext = { transport: 'simulation', now: 1234, armed: true };
+  const registered = [];
+  const cleanup = registerAgentTools({ registerTool: tool => registered.push(tool) }, text => f.session.run(text), f.session);
+  const tool = registered.find(item => item.name === 'reachy_diagnostics');
+  assert.equal(tool.annotations.readOnlyHint, true);
+  assert.equal(tool.annotations.consequentialHint, undefined);
+  const result = JSON.parse((await tool.execute({})).content[0].text);
+  assert.equal(result.transport, 'simulation');
+  assert.equal(result.writes.armed, false);
+  assert.deepEqual(f.changes, []);
+  assert.equal(f.sent.length, 0);
+  f.session.arm();
+  assert.equal((await f.session.run('diagnostics')).writes.armed, true);
+  assert.equal(f.sent.length, 0);
+  f.state.connected = false;
+  assert.equal((await f.session.run('diagnostics')).writes.armed, false);
+  assert.equal(f.sent.length, 0);
+  cleanup();
 });

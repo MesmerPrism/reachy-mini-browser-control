@@ -12,6 +12,8 @@ export const PUBLIC_FILES = Object.freeze([
   '.github/workflows/checks.yml', 'docs/ARCHITECTURE.md', 'docs/STATUS.md', 'docs/RECOVERY.md', 'docs/DAEMON_1_11_COMPATIBILITY.md',
   'src/AgentConsole.jsx', 'src/agent-console.mjs', 'src/agent-console.css', 'test/agent-console.test.mjs',
   'src/command-flight.mjs', 'test/command-flight.test.mjs',
+  'src/controller-diagnostics.mjs', 'test/controller-diagnostics.test.mjs', 'public-site/ControllerDiagnostics.jsx',
+  'src/staged-target.mjs', 'test/staged-target.test.mjs',
   'src/browser-bluetooth.mjs', 'public-site/RecoveryGuide.jsx', 'test/browser-bluetooth.test.mjs',
   'test/fixtures/recovery-qa.html', 'test/fixtures/recovery-qa.jsx',
   'src/model-antenna-control.mjs', 'test/model-antenna-control.test.mjs',

@@ -108,5 +108,10 @@ headset view share the same Controls page. Read [interaction and automation deta
 
 For read-only diagnostics, `npm run agent -- --help` lists bounded status,
 offline guidance and publication-integrity commands. See [CLI details](docs/SETUP.md#agent-diagnostics-cli).
+The hosted controller also exposes `window.reachyAgent.diagnostics()` and an
+expandable **Connection & diagnostics** panel. Its copyable summary excludes
+identity, addresses and credentials and reads the current tab snapshot only.
+Head and antenna targets expire after 15 seconds without new input; discarding
+unsent targets is separate from software Stop and does not prove physical arrival.
 For project structure and changes, read [architecture](docs/ARCHITECTURE.md) and
 [contributing](CONTRIBUTING.md).

@@ -4,7 +4,9 @@ import { createWirelessTalk } from '../src/wireless-audio.mjs';
 import FitText from './FitText.jsx';
 import { OrientationPad, AngleControl, PrecisionField, PositionPad, CameraAimSurface } from '../src/SpatialControls.jsx';
 import AgentConsole from '../src/AgentConsole.jsx';
+import ControllerDiagnostics from './ControllerDiagnostics.jsx';
 import { createCommandFlight } from '../src/command-flight.mjs';
+import { stageTarget, assessStagedTarget } from '../src/staged-target.mjs';
 const WebXRControls = lazy(() => import('../src/WebXRControls.jsx'));
 const RobotModel = lazy(() => import('../src/RobotModel.jsx'));
 const SimulatedCamera = lazy(() => import('./SimulatedCamera.jsx'));
@@ -68,6 +70,15 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
       const state = current.snapshot(); setStatus(state);
       if (goal.current && goal.current.epoch !== state.controlEpoch) goal.current = null;
       if (!state.connected || !state.ready || !state.awake || state.measured?.running || document.hidden) { goal.current = null; if (follow.current) { follow.current = false; setFollowing(false); } talk.current?.release(); return; }
+      if (goal.current && !follow.current) {
+        const assessment = assessStagedTarget(goal.current, { now: Date.now(), epoch: state.controlEpoch, measured: state.measured });
+        if (assessment !== 'send') {
+          goal.current = null;
+          if (assessment === 'expired') setMessage('Target send deadline reached; unsent requests discarded. Compare measured values before a new request.');
+          else if (assessment === 'converged') setMessage('Later measured values are within target tolerance; application remains unconfirmed.');
+          else setMessage('Target discarded because its control context or telemetry changed.');
+        }
+      }
       if (tickBusy.current) return;
       let target = goal.current;
       if (follow.current) {
@@ -76,13 +87,9 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
         target = { action: 'head-manual', pose: { ...state.measured.head, yaw: Math.max(-20,Math.min(20,tracked.yaw)), pitch: Math.max(-15,Math.min(15,tracked.pitch)) } };
       }
       if (!target || latest.current.busy) return;
-      if (!follow.current) {
-        const arrived = target.pose ? Object.keys(target.pose).every(axis => Math.abs(target.pose[axis]-state.measured.head[axis]) < .1) : Object.keys(target.targets).every(side=>Math.abs(target.targets[side]-state.measured.antennas[side]) < .1);
-        if (arrived) { goal.current=null; return; }
-      }
       tickBusy.current = true;
-      try { const result = await current.command({ ...target, epoch:state.controlEpoch, speed: latest.current.speed }); if (!result.queued) throw Error('Motion request was not queued'); if(control.current===current && current.snapshot().controlEpoch===state.controlEpoch)setMessage('Target queued; compare the measured values'); }
-      catch (error) { goal.current = null; follow.current = false; setFollowing(false); setError(error.message); }
+      try { const result = await current.command({ ...target, epoch:state.controlEpoch, speed: latest.current.speed }); if (!result.queued) throw Error('Motion request was not queued'); if(control.current===current && current.snapshot().controlEpoch===state.controlEpoch && (goal.current === target || follow.current))setMessage('Target queued; compare the measured values'); }
+      catch (error) { if(control.current===current && current.snapshot().controlEpoch===state.controlEpoch){ if(goal.current === target)goal.current = null; follow.current = false; setFollowing(false); setError(error.message); } }
       finally { tickBusy.current = false; }
     }, 50);
     const hide = () => { if (document.hidden) { void disconnect(); } };
@@ -104,18 +111,18 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
     const current = control.current, state = current?.snapshot();
     if (!state?.ready || !state.awake || state.measured?.running || latest.current.busy || mutationFlight.current.busy || document.hidden || follow.current) throw Error('Head control is not ready.');
     if (!partial || !Object.keys(partial).length || Object.entries(partial).some(([axis, value]) => !Object.hasOwn(zero, axis) || !Number.isFinite(value) || Math.abs(value) > (axis === 'yaw' ? 20 : ['pitch', 'roll'].includes(axis) ? 15 : 10))) throw Error('Head target exceeds the selected controls.');
-    const previous = merge && goal.current?.action === 'head-manual' && goal.current.epoch === state.controlEpoch ? goal.current.pose : {};
+    const staged = stageTarget(goal.current, { action: 'head-manual', pose: partial, epoch: state.controlEpoch }, { now: Date.now(), measuredAt: state.measured.receivedAt, merge });
     setHead(value => ({ ...value, ...partial }));
-    goal.current = { action: 'head-manual', pose: { ...previous, ...partial }, epoch: state.controlEpoch };
+    goal.current = staged;
     return { queued: true, confirmed: false, controlEpoch: state.controlEpoch, message: 'Target staged for the bounded controller loop.' };
   };
   const submitAntennas = (partial, merge = true) => {
     const state = control.current?.snapshot();
     if (!state?.ready || !state.awake || state.measured?.running || latest.current.busy || mutationFlight.current.busy || document.hidden || follow.current || latest.current.xrEngaged) throw Error('Antenna control is not ready.');
     if (!partial || !Object.keys(partial).length || Object.entries(partial).some(([axis, value]) => !['left', 'right'].includes(axis) || !Number.isFinite(value) || Math.abs(value) > 90)) throw Error('Antenna target exceeds 90 degrees.');
-    const previous = merge && goal.current?.action === 'antennas' && goal.current.epoch === state.controlEpoch ? goal.current.targets : {};
+    const staged = stageTarget(goal.current, { action: 'antennas', targets: partial, epoch: state.controlEpoch }, { now: Date.now(), measuredAt: state.measured.receivedAt, merge });
     setAntennas(value => ({ ...value, ...partial }));
-    goal.current = { action: 'antennas', targets: { ...previous, ...partial }, epoch: state.controlEpoch };
+    goal.current = staged;
     return { queued: true, confirmed: false, controlEpoch: state.controlEpoch };
   };
   const executeAgent = async (request, epoch) => {
@@ -192,9 +199,9 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
         </details>
         <details className="control-section tracking-options"><summary>Webcam tracking</summary><div className="media-grid"><video ref={webcam} autoPlay playsInline muted /><div><p>{`Webcam: ${webcamState} · ${following ? 'Following your head' : 'Preview does not move Reachy'}`}</p><p>{tracked?.tracked && tracked?.calibrated ? `Turn ${degrees(tracked.yaw)}° · Nod ${degrees(tracked.pitch)}°` : 'Look forward and set a neutral pose.'}</p><div className="actions"><button disabled={webcamState!=='off'&&webcamState!=='idle'} onClick={() => void startWebcam()}>Start webcam preview</button><button disabled={!tracked?.tracked || following} onClick={() => {if(!tracker.current?.calibrate())setError('Wait for a fresh face frame.');}}>Set neutral pose</button><button disabled={!canMove || xrEngaged || !tracked?.tracked || !tracked.calibrated || following} onClick={() => {goal.current=null;follow.current=true;setFollowing(true);}}>Follow my head</button><button disabled={!following} onClick={() => void stop()}>Stop following</button><button disabled={webcamState==='off'||webcamState==='idle'} onClick={() => {void stop();stopPreview();}}>Turn webcam off</button></div></div></div></details>
         <details className="control-section xr-options"><summary>WebXR headset</summary><Suspense fallback={<p>Loading WebXR controls…</p>}><WebXRControls snapshot={{ ...status, headAngles: status.measured?.head }} requested={head} allowed={canMove && !following} demo={demo} onHeadChange={partial => { const ctx=xrContext.current;if(!ctx || control.current!==ctx.control || ctx.control.snapshot().controlEpoch!==ctx.epoch)throw Error('XR control context expired.');return submitHead(partial, false); }} onStop={() => { if(xrContext.current?.control===control.current)void stop(); }} onEngagementChange={value => { xrContext.current=value && control.current ? {control:control.current,epoch:control.current.snapshot().controlEpoch} : null;setXrEngaged(value); }} connectionKey={antennaKey} stopRevision={stopRevision} videoElement={video.current} /></Suspense></details>
-        <AgentConsole snapshot={() => control.current?.snapshot() || { connected: false }} execute={executeAgent} onDisarm={() => { goal.current = null; }} sessionKey={antennaKey} disabled={!status.connected || busy || following || xrEngaged} />
-        <details className="control-section connection-details"><summary>Connection & limits</summary><p>{demo ? 'Simulation only: no robot, camera or microphone connection.' : `Connected robot hardware ID: ${status.hardwareId || 'checking'}`}</p><p>Daemon {status.version || 'checking'}. Targets and Stop are queued; compare fresh measured feedback. Keep one controller active. <a href="#use">Transport details</a>.</p></details>
+        <AgentConsole snapshot={() => control.current?.snapshot() || { connected: false }} diagnosticsContext={{ transport: demo || initialDemo ? 'simulation' : 'wireless' }} execute={executeAgent} onDisarm={() => { goal.current = null; }} sessionKey={antennaKey} disabled={!status.connected || busy || following || xrEngaged} />
       </div>
     </div>
+    <div className="controller-options"><ControllerDiagnostics key={antennaKey} snapshot={status} demo={demo || initialDemo} /></div>
   </>;
 }
