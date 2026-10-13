@@ -312,6 +312,35 @@ camera/audio, identity and safe control checks before a separately reviewed gate
 change. Offline success alone is insufficient. Read [candidate compatibility](DAEMON_1_11_COMPATIBILITY.md)
 for the scoped synthetic evidence.
 
+The **0.3.5 phone demo** adds Android-first orientation input and a separate paired
+phone-to-PC sender. Phone access, neutral, following, held input and PC approval
+are explicit. These inputs exist only in simulation; the sender has no robot
+connection or power/general-command capability. Relative rotation preserves
+translation, body yaw and antennas. Input ownership is excluded synchronously,
+and loss clears staged intent before software Stop. Phone input expires after a
+short gap; the existing manual target deadline is not used as its loss watchdog.
+
+Pairing uses two private, bounded, single-use codes and local WebRTC candidates,
+without a signaling server or STUN/TURN relay. Periodic receiver-clock challenges
+bound delayed input without assuming synchronized sensor clocks. A distinct
+approval nonce prevents rapid Stop/reapproval from resuming an old held gesture.
+The loopback bridge and physical control admission remain unchanged. Read
+[phone setup and limits](PHONE_CONTROL.md).
+
+For this revision, **397 offline tests**, the local production build and the
+hosted production build passed on Node **24.13.1**. Synthetic browser sensors at
+**1280×800** and **390×844** exercised neutral without movement, held yaw/pitch/roll,
+competing-input exclusion, release, stale readings and denied permission. Two
+browser contexts completed the actual WebRTC offer/answer exchange and moved the
+PC simulation, including a lost first pose packet and a lost release packet;
+Stop/reapproval left the prior hold disarmed. App console and
+overflow checks passed. The reviewed source inventory contains **156 files**.
+
+These are synthetic sensor and same-machine peer results. They do not verify
+physical Android sensor cadence, drift, permissions or two-device LAN behavior.
+No phone device, robot, camera or microphone was accessed. Physical robot testing
+remains waiting for an attended operator; phone input remains simulation-only.
+
 Setup, Wi-Fi changes, remote account authorization and control are separate checks.
 A successful update job or submission acknowledgement is not confirmation of the
 result; inspect fresh robot status. Unsupported versions retain robot-owned

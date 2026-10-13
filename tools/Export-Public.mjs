@@ -14,6 +14,9 @@ export const PUBLIC_FILES = Object.freeze([
   'src/command-flight.mjs', 'test/command-flight.test.mjs',
   'src/controller-diagnostics.mjs', 'test/controller-diagnostics.test.mjs', 'public-site/ControllerDiagnostics.jsx',
   'src/staged-target.mjs', 'test/staged-target.test.mjs',
+  'src/phone-orientation.mjs', 'src/phone-follow.mjs', 'src/phone-peer.mjs', 'src/PhoneSensorPad.jsx',
+  'test/phone-orientation.test.mjs', 'test/phone-follow.test.mjs', 'test/phone-peer.test.mjs',
+  'public-site/PhoneMotionControls.jsx', 'public-site/PhoneController.jsx', 'docs/PHONE_CONTROL.md',
   'src/browser-bluetooth.mjs', 'public-site/RecoveryGuide.jsx', 'test/browser-bluetooth.test.mjs',
   'test/fixtures/recovery-qa.html', 'test/fixtures/recovery-qa.jsx',
   'src/model-antenna-control.mjs', 'test/model-antenna-control.test.mjs',
@@ -75,7 +78,10 @@ export function auditPublicFile(name, bytes) {
   if (/(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)/.test(text)) throw Error(`Credential in ${name}`);
   for (const match of text.matchAll(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g)) {
     const octets = match[0].split('.').map(Number);
-    if (octets.every(v => v <= 255) && match[0] !== '127.0.0.1') throw Error(`Non-loopback numeric address in ${name}`);
+    // SDP's unspecified address is a reviewed wire placeholder, not a bind or
+    // robot endpoint. Admit it only in the demo pairing module and its fixture.
+    const sdpPlaceholder = ['src/phone-peer.mjs', 'test/phone-peer.test.mjs'].includes(name) && octets.every(value => value === 0);
+    if (octets.every(v => v <= 255) && match[0] !== '127.0.0.1' && !sdpPlaceholder) throw Error(`Non-loopback numeric address in ${name}`);
   }
   if (name === 'config.example.json') {
     const config = JSON.parse(text);

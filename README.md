@@ -48,6 +48,12 @@ dragging orbits the view. Smaller screens
 stack the panels. Audio, tracking, emotes, agent commands and WebXR remain available
 in expandable controls on the same page.
 
+In Demo, **Phone motion** uses Android phone turn/nod/tilt directly or through a
+paired phone-to-PC connection. Sensor access, following and the held button are
+explicit. Pairing uses two temporary private codes without a signaling server.
+Phone inputs are simulation-only; they cannot control a physical robot. Read
+[phone setup and limitations](docs/PHONE_CONTROL.md).
+
 ## Run locally
 
 Use Node **24** (CI baseline; Vite also supports Node 22.12+). Clone this repository

@@ -46,6 +46,14 @@ test('release retries preserve bytes and a reused version rejects changed source
   assert.deepEqual(await fs.readFile(path.join(product, 'PUBLIC_ARTIFACTS.json')), receipt);
   assert.equal(await fs.readFile(path.join(product, 'source/README.md'), 'utf8'), entries.find(e => e.name === 'README.md').bytes.toString());
 });
+test('SDP unspecified-address exception stays limited to reviewed pairing source and fixtures', () => {
+  const unspecified = ['0','0','0','0'].join('.'), privateAddress = ['192','168','1','44'].join('.');
+  for(const file of ['src/phone-peer.mjs','test/phone-peer.test.mjs']) {
+    assert.doesNotThrow(()=>auditPublicFile(file,Buffer.from(unspecified)));
+    assert.throws(()=>auditPublicFile(file,Buffer.from(privateAddress)),/numeric address/);
+  }
+  assert.throws(()=>auditPublicFile('src/unreviewed.mjs',Buffer.from(unspecified)),/numeric address/);
+});
 test('ZIP has deterministic timestamps, CRC headers and exact source entry payloads',()=>{
   const entries=[{name:'package/LICENSE',bytes:Buffer.from('MIT')},{name:'package/src/example.js',bytes:Buffer.from('export const ok = true;')},{name:'package/crc-fixture.txt',bytes:Buffer.from('123456789')}];
   const archive=sourceZip(entries);assert.deepEqual(archive,sourceZip(entries));

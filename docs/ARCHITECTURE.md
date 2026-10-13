@@ -108,3 +108,23 @@ perform no network reads or writes. They omit identifiers, endpoints, raw errors
 and credentials. Hosted receipt freshness, session-only ownership and queued-only
 targets remain distinct from the local bridge's recovery contract and from demo
 simulation. Sensor age and unavailable evidence are reported as unknown.
+
+Phone input is a separate simulation-only motion owner. The inert orientation
+source starts only after a user action, converts device/screen coordinates to the
+XR convention, and keeps original browser timestamps. The follow guard requires
+held input, a fresh measured baseline, matching epoch and demo admission. It
+returns rotation only and never sends commands. The parent synchronously fences
+competing input through the captured phone control context; loss drops staged
+intent before the existing software Stop path.
+
+Manual offer/answer codes establish a local WebRTC data channel between a phone
+sender and one demo tab. No backend, robot credential or robot connection is
+available to the sender. The receiver explicitly approves input and uses bounded
+challenges, sequences and conservative age limits. Approval generations are
+separate from periodic freshness challenges, so Stop/reapproval requires a new
+held gesture. Context replacement and reconnect never replay input. Each pose
+carries a distinct gesture sequence and immutable press reference;
+reference calibration cannot renew current-packet freshness. Lost releases
+retire the previous hold before a fresh gesture may acquire input ownership.
+The transition discards frames while Stop is pending and rejects expired handoffs.
+These modules do not expose or relax the loopback bridge. See [phone controls](PHONE_CONTROL.md).

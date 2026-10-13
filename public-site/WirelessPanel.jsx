@@ -5,6 +5,7 @@ import FitText from './FitText.jsx';
 import { OrientationPad, AngleControl, PrecisionField, PositionPad, CameraAimSurface } from '../src/SpatialControls.jsx';
 import AgentConsole from '../src/AgentConsole.jsx';
 import ControllerDiagnostics from './ControllerDiagnostics.jsx';
+import PhoneMotionControls from './PhoneMotionControls.jsx';
 import { createCommandFlight } from '../src/command-flight.mjs';
 import { stageTarget, assessStagedTarget } from '../src/staged-target.mjs';
 const WebXRControls = lazy(() => import('../src/WebXRControls.jsx'));
@@ -19,10 +20,11 @@ function Slider({ label, value, min, max, measured, unit, disabled, onChange }) 
 export default function WirelessPanel({ initialDemo = false, expectedVersion = '1.10.0' }) {
   const control = useRef(null), latest = useRef({}), goal = useRef(null), tokenInput = useRef(null), video = useRef(null), webcam = useRef(null), tracker = useRef(null), follow = useRef(false), pose = useRef(null), talk = useRef(null), tickBusy = useRef(false), picker = useRef(null), generation = useRef(0), previewGeneration=useRef(0);
   const [status, setStatus] = useState({ connected: false }), [token, setToken] = useState(''), [consent, setConsent] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('Disconnected'), [demo, setDemo] = useState(false), [choices, setChoices] = useState([]), [selection, setSelection] = useState(''), [head, setHead] = useState(zero), [antennas, setAntennas] = useState({ left: 0, right: 0 }), [listen, setListen] = useState(false), [listeningVolume, setListeningVolume] = useState(60), [volume, setVolume] = useState(40), [webcamState, setWebcamState] = useState('off'), [following, setFollowing] = useState(false), [tracked, setTracked] = useState(null), [micState, setMicState] = useState('off'), [held, setHeld] = useState(false), [speed, setSpeed] = useState(20);
-  const mutationFlight = useRef(createCommandFlight()), xrContext = useRef(null);
+  const mutationFlight = useRef(createCommandFlight()), xrContext = useRef(null), phoneContext = useRef(null);
   const [xrEngaged, setXrEngaged] = useState(false), [stopRevision, setStopRevision] = useState(0);
-  latest.current = { status, busy, demo, speed, xrEngaged };
-  const halt = () => { xrContext.current = null; goal.current = null; follow.current = false; setFollowing(false); talk.current?.disable(); };
+  const [phoneEngaged, setPhoneEngaged] = useState(false);
+  latest.current = { status, busy, demo, speed, xrEngaged, phoneEngaged };
+  const halt = () => { xrContext.current = null; phoneContext.current = null; setPhoneEngaged(false); goal.current = null; follow.current = false; setFollowing(false); talk.current?.disable(); };
   const stop = async () => { const gen=generation.current;setStopRevision(value => value + 1);halt();try { await performAction({ action: 'stop' }); } catch(error) { if(gen===generation.current)setError(error.message); } };
   const stopPreview=()=>{previewGeneration.current++;tracker.current?.stop();tracker.current=null;setWebcamState('off');};
   const disconnect = async () => { generation.current++; mutationFlight.current.clear(); halt(); stopPreview(); setListen(false); picker.current?.(null); picker.current = null; setChoices([]); const previous = control.current; control.current = null; await previous?.close(); setStatus({ connected: false }); setToken(''); setMessage('Disconnected; requests were discarded'); };
@@ -107,9 +109,10 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
     catch (error) { if(requested===previewGeneration.current){setWebcamState('off');setError(error.message);} }
   };
   const canMove = status.connected && status.ready && status.awake && !status.measured?.running && !busy;
-  const submitHead = (partial, merge = true) => {
+  const submitHead = (partial, merge = true, owner = 'manual') => {
     const current = control.current, state = current?.snapshot();
     if (!state?.ready || !state.awake || state.measured?.running || latest.current.busy || mutationFlight.current.busy || document.hidden || follow.current) throw Error('Head control is not ready.');
+    if ((phoneContext.current && owner !== 'phone') || (xrContext.current && owner !== 'xr')) throw Error('Another input owns head control.');
     if (!partial || !Object.keys(partial).length || Object.entries(partial).some(([axis, value]) => !Object.hasOwn(zero, axis) || !Number.isFinite(value) || Math.abs(value) > (axis === 'yaw' ? 20 : ['pitch', 'roll'].includes(axis) ? 15 : 10))) throw Error('Head target exceeds the selected controls.');
     const staged = stageTarget(goal.current, { action: 'head-manual', pose: partial, epoch: state.controlEpoch }, { now: Date.now(), measuredAt: state.measured.receivedAt, merge });
     setHead(value => ({ ...value, ...partial }));
@@ -118,7 +121,7 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
   };
   const submitAntennas = (partial, merge = true) => {
     const state = control.current?.snapshot();
-    if (!state?.ready || !state.awake || state.measured?.running || latest.current.busy || mutationFlight.current.busy || document.hidden || follow.current || latest.current.xrEngaged) throw Error('Antenna control is not ready.');
+    if (!state?.ready || !state.awake || state.measured?.running || latest.current.busy || mutationFlight.current.busy || document.hidden || follow.current || xrContext.current || phoneContext.current) throw Error('Antenna control is not ready.');
     if (!partial || !Object.keys(partial).length || Object.entries(partial).some(([axis, value]) => !['left', 'right'].includes(axis) || !Number.isFinite(value) || Math.abs(value) > 90)) throw Error('Antenna target exceeds 90 degrees.');
     const staged = stageTarget(goal.current, { action: 'antennas', targets: partial, epoch: state.controlEpoch }, { now: Date.now(), measuredAt: state.measured.receivedAt, merge });
     setAntennas(value => ({ ...value, ...partial }));
@@ -127,7 +130,7 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
   };
   const executeAgent = async (request, epoch) => {
     const current = control.current;
-    if (!current || current.snapshot().controlEpoch !== epoch || (request.name !== 'stop' && (mutationFlight.current.busy || latest.current.busy || follow.current || latest.current.xrEngaged))) throw Error('This connection is busy or the command epoch expired.');
+    if (!current || current.snapshot().controlEpoch !== epoch || (request.name !== 'stop' && (mutationFlight.current.busy || latest.current.busy || follow.current || xrContext.current || phoneContext.current))) throw Error('This connection is busy or the command epoch expired.');
     if (request.name === 'head') return submitHead(request.values, false);
     if (request.name === 'antennas') return submitAntennas(request.values, false);
     if (request.name === 'stop') setStopRevision(value => value + 1);
@@ -140,15 +143,15 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
   const antennaContext = { sessionKey: antennaKey, controlEpoch: status.controlEpoch };
   const verifyAntennaContext = context => {
     const current = control.current;
-    if (!context || context.sessionKey !== `${generation.current}:${current?.snapshot().hardwareId || 'none'}` || context.controlEpoch !== current?.snapshot().controlEpoch || mutationFlight.current.busy || latest.current.busy || follow.current || latest.current.xrEngaged) throw Error('Antenna control context changed.');
+    if (!context || context.sessionKey !== `${generation.current}:${current?.snapshot().hardwareId || 'none'}` || context.controlEpoch !== current?.snapshot().controlEpoch || mutationFlight.current.busy || latest.current.busy || follow.current || xrContext.current || phoneContext.current) throw Error('Antenna control context changed.');
   };
-  const antennaControl = { targets: antennas, measured: status.measured?.antennas, disabled: !canMove || following || xrEngaged,
+  const antennaControl = { targets: antennas, measured: status.measured?.antennas, disabled: !canMove || following || xrEngaged || phoneEngaged,
     ...antennaContext, onChange: (side, value, context) => { verifyAntennaContext(context); return submitAntennas({ [side]: value }); },
     onCenter: context => { verifyAntennaContext(context); return submitAntennas({ left: 0, right: 0 }); } };
   const headGestureKey = `${antennaKey}:${status.controlEpoch}:${stopRevision}`;
   const manualHead = partial => {
     try {
-      if (latest.current.xrEngaged || control.current?.snapshot().controlEpoch !== status.controlEpoch) throw Error('Head control context changed.');
+      if (xrContext.current || phoneContext.current || control.current?.snapshot().controlEpoch !== status.controlEpoch) throw Error('Head control context changed.');
       return submitHead(partial);
     } catch (problem) { setError(problem.message); return false; }
   };
@@ -168,10 +171,10 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
     <div className="connected-surface" hidden={!status.connected}>
       <div className="controller-workspace">
         <section className="control-section operator-camera"><h2>{initialDemo || demo ? 'Simulated camera' : 'Reachy camera'}</h2>
-          <CameraAimSurface values={head} hidden={initialDemo || demo && status.connected} disabled={!canMove || following || xrEngaged || demo} onChange={manualHead} contextKey={headGestureKey}>
+          <CameraAimSurface values={head} hidden={initialDemo || demo && status.connected} disabled={!canMove || following || xrEngaged || phoneEngaged || demo} onChange={manualHead} contextKey={headGestureKey}>
             <video ref={video} autoPlay muted playsInline hidden={initialDemo || demo && status.connected} />
           </CameraAimSurface>
-          {demo && status.connected && <Suspense fallback={<p>Loading simulated camera…</p>}><SimulatedCamera measured={status.measured} compact aimControl={{values:head,disabled:!canMove || following || xrEngaged,onChange:manualHead,contextKey:headGestureKey}} /></Suspense>}
+          {demo && status.connected && <Suspense fallback={<p>Loading simulated camera…</p>}><SimulatedCamera measured={status.measured} compact aimControl={{values:head,disabled:!canMove || following || xrEngaged || phoneEngaged,onChange:manualHead,contextKey:headGestureKey}} /></Suspense>}
           <p className="camera-aim-help">Drag the camera view to turn and nod.</p>
           {!demo && <p className="media-note">Live WebRTC feed · audio off until enabled.</p>}
           <details className="camera-options"><summary>Listening & camera details</summary>
@@ -182,24 +185,39 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion = '
         </section>
         <Suspense fallback={<section className="control-section"><h2>Reachy in 3D</h2><p>Loading model…</p></section>}><RobotModel control={modelControl} schematic Text={FitText} antennaControl={antennaControl} /></Suspense>
         <section className="control-section operator-head"><h2>Head movement</h2>
-          <div className="spatial-orientation"><OrientationPad contextKey={headGestureKey} values={head} measured={status.measured?.head} disabled={!canMove || following || xrEngaged} onChange={manualHead} /><AngleControl contextKey={headGestureKey} label="Tilt" value={head.roll} measured={status.measured?.head.roll} limit={15} disabled={!canMove || following || xrEngaged} onChange={roll => manualHead({ roll })} /></div>
-          <button disabled={!canMove || following || xrEngaged} onClick={() => manualHead({ yaw: 0, pitch: 0, roll: 0 })}>Center orientation</button>
+          <div className="spatial-orientation"><OrientationPad contextKey={headGestureKey} values={head} measured={status.measured?.head} disabled={!canMove || following || xrEngaged || phoneEngaged} onChange={manualHead} /><AngleControl contextKey={headGestureKey} label="Tilt" value={head.roll} measured={status.measured?.head.roll} limit={15} disabled={!canMove || following || xrEngaged || phoneEngaged} onChange={roll => manualHead({ roll })} /></div>
+          <button disabled={!canMove || following || xrEngaged || phoneEngaged} onClick={() => manualHead({ yaw: 0, pitch: 0, roll: 0 })}>Center orientation</button>
           <p className="spatial-help">Solid = requested · dashed = measured. Directions are Reachy’s own.</p>
-          <div className="spatial-translation"><PositionPad values={head} measured={status.measured?.head} limits={{y:10,z:10}} disabled={!canMove || following || xrEngaged} onChange={manualHead} contextKey={headGestureKey} /><div className="translation-depth"><label>Forward / back · {head.x.toFixed(1)} mm<input type="range" min={-10} max={10} step={.1} value={head.x} disabled={!canMove || following || xrEngaged} aria-label="Head forward and back position" onChange={event => manualHead({x:Number(event.target.value)})} /></label><p className="spatial-measured">Measured {degrees(status.measured?.head.x)} mm</p><button disabled={!canMove || following || xrEngaged} onClick={() => manualHead({x:0,y:0,z:0})}>Center position</button></div></div>
-          <details className="spatial-position"><summary>Position & speed</summary><p>Head position in millimetres from the neutral origin.</p><div className="spatial-position-fields">{['x','y','z'].map(axis => <PrecisionField key={axis} label={names[axis]} value={head[axis]} limit={10} unit="mm" disabled={!canMove || following || xrEngaged} onChange={value => submitHead({ [axis]: value })} />)}</div><button disabled={!canMove || following || xrEngaged} onClick={() => submitHead({ x: 0, y: 0, z: 0 })}>Center position</button><label className="compact-speed">Angular speed <input type="number" aria-label="Angular speed limit" min={5} max={30} value={speed} onChange={event => {const next=Number(event.target.value);if(Number.isFinite(next)&&next>=5&&next<=30)setSpeed(next);}} /> °/s</label><p>Translation is capped at 10 mm/s.</p></details>
+          <div className="spatial-translation"><PositionPad values={head} measured={status.measured?.head} limits={{y:10,z:10}} disabled={!canMove || following || xrEngaged || phoneEngaged} onChange={manualHead} contextKey={headGestureKey} /><div className="translation-depth"><label>Forward / back · {head.x.toFixed(1)} mm<input type="range" min={-10} max={10} step={.1} value={head.x} disabled={!canMove || following || xrEngaged || phoneEngaged} aria-label="Head forward and back position" onChange={event => manualHead({x:Number(event.target.value)})} /></label><p className="spatial-measured">Measured {degrees(status.measured?.head.x)} mm</p><button disabled={!canMove || following || xrEngaged || phoneEngaged} onClick={() => manualHead({x:0,y:0,z:0})}>Center position</button></div></div>
+          <details className="spatial-position"><summary>Position & speed</summary><p>Head position in millimetres from the neutral origin.</p><div className="spatial-position-fields">{['x','y','z'].map(axis => <PrecisionField key={axis} label={names[axis]} value={head[axis]} limit={10} unit="mm" disabled={!canMove || following || xrEngaged || phoneEngaged} onChange={value => submitHead({ [axis]: value })} />)}</div><button disabled={!canMove || following || xrEngaged || phoneEngaged} onClick={() => submitHead({ x: 0, y: 0, z: 0 })}>Center position</button><label className="compact-speed">Angular speed <input type="number" aria-label="Angular speed limit" min={5} max={30} value={speed} onChange={event => {const next=Number(event.target.value);if(Number.isFinite(next)&&next>=5&&next<=30)setSpeed(next);}} /> °/s</label><p>Translation is capped at 10 mm/s.</p></details>
         </section>
       </div>
       <div className="controller-options">
-        <details className="control-section"><summary>Emotes</summary><label htmlFor="emote-picker">Official emotion library</label><select id="emote-picker" value={emote} onChange={event=>setEmote(event.target.value)}>{WIRELESS_EMOTES.map(name=><option key={name}>{name}</option>)}</select><button disabled={!canMove || demo || following || xrEngaged} onClick={()=>void command({action:'emote',name:emote})}>Play selected emote</button><p>Playback is queued only. The robot must have the official emotion library available.</p></details>
+        <details className="control-section"><summary>Emotes</summary><label htmlFor="emote-picker">Official emotion library</label><select id="emote-picker" value={emote} onChange={event=>setEmote(event.target.value)}>{WIRELESS_EMOTES.map(name=><option key={name}>{name}</option>)}</select><button disabled={!canMove || demo || following || xrEngaged || phoneEngaged} onClick={()=>void command({action:'emote',name:emote})}>Play selected emote</button><p>Playback is queued only. The robot must have the official emotion library available.</p></details>
         <details className="control-section"><summary>Speaker & push to talk</summary>
           <Slider label="Reachy speaker volume" value={volume} min={0} max={100} unit="%" disabled={!status.connected || !status.ready || busy} onChange={setVolume} />
           <div className="actions"><button disabled={!status.ready || busy} onClick={() => void command({action:'volume',value:volume})}>Apply speaker volume</button><button disabled={!status.ready || busy} onClick={() => {setVolume(0);void command({action:'volume',value:0});}}>Mute speaker</button></div>
           <p>{`Computer microphone: ${micState}${held ? ' · transmitting while held' : ''}`}</p>
           <div className="actions"><button disabled={!canMove || demo || micState==='enabling'} onClick={() => void talk.current?.enable()}>Enable computer microphone</button><button disabled={micState==='off'} onClick={() => talk.current?.disable()}>Disable microphone</button><button className="push-talk" aria-pressed={held} disabled={!canMove || demo || micState!=='ready'} onPointerDown={event => {event.currentTarget.setPointerCapture(event.pointerId);void talk.current?.press();}} onPointerUp={() => talk.current?.release()} onPointerCancel={() => talk.current?.release()} onLostPointerCapture={() => talk.current?.release()} onKeyDown={event => {if ([' ','Enter'].includes(event.key)&&!event.repeat){event.preventDefault();void talk.current?.press();}}} onKeyUp={event=>{if([' ','Enter'].includes(event.key)){event.preventDefault();talk.current?.release();}}} onBlur={() => talk.current?.release()}>Hold to talk through Reachy</button></div>
         </details>
-        <details className="control-section tracking-options"><summary>Webcam tracking</summary><div className="media-grid"><video ref={webcam} autoPlay playsInline muted /><div><p>{`Webcam: ${webcamState} · ${following ? 'Following your head' : 'Preview does not move Reachy'}`}</p><p>{tracked?.tracked && tracked?.calibrated ? `Turn ${degrees(tracked.yaw)}° · Nod ${degrees(tracked.pitch)}°` : 'Look forward and set a neutral pose.'}</p><div className="actions"><button disabled={webcamState!=='off'&&webcamState!=='idle'} onClick={() => void startWebcam()}>Start webcam preview</button><button disabled={!tracked?.tracked || following} onClick={() => {if(!tracker.current?.calibrate())setError('Wait for a fresh face frame.');}}>Set neutral pose</button><button disabled={!canMove || xrEngaged || !tracked?.tracked || !tracked.calibrated || following} onClick={() => {goal.current=null;follow.current=true;setFollowing(true);}}>Follow my head</button><button disabled={!following} onClick={() => void stop()}>Stop following</button><button disabled={webcamState==='off'||webcamState==='idle'} onClick={() => {void stop();stopPreview();}}>Turn webcam off</button></div></div></div></details>
-        <details className="control-section xr-options"><summary>WebXR headset</summary><Suspense fallback={<p>Loading WebXR controls…</p>}><WebXRControls snapshot={{ ...status, headAngles: status.measured?.head }} requested={head} allowed={canMove && !following} demo={demo} onHeadChange={partial => { const ctx=xrContext.current;if(!ctx || control.current!==ctx.control || ctx.control.snapshot().controlEpoch!==ctx.epoch)throw Error('XR control context expired.');return submitHead(partial, false); }} onStop={() => { if(xrContext.current?.control===control.current)void stop(); }} onEngagementChange={value => { xrContext.current=value && control.current ? {control:control.current,epoch:control.current.snapshot().controlEpoch} : null;setXrEngaged(value); }} connectionKey={antennaKey} stopRevision={stopRevision} videoElement={video.current} /></Suspense></details>
-        <AgentConsole snapshot={() => control.current?.snapshot() || { connected: false }} diagnosticsContext={{ transport: demo || initialDemo ? 'simulation' : 'wireless' }} execute={executeAgent} onDisarm={() => { goal.current = null; }} sessionKey={antennaKey} disabled={!status.connected || busy || following || xrEngaged} />
+        <details className="control-section tracking-options"><summary>Webcam tracking</summary><div className="media-grid"><video ref={webcam} autoPlay playsInline muted /><div><p>{`Webcam: ${webcamState} · ${following ? 'Following your head' : 'Preview does not move Reachy'}`}</p><p>{tracked?.tracked && tracked?.calibrated ? `Turn ${degrees(tracked.yaw)}° · Nod ${degrees(tracked.pitch)}°` : 'Look forward and set a neutral pose.'}</p><div className="actions"><button disabled={webcamState!=='off'&&webcamState!=='idle'} onClick={() => void startWebcam()}>Start webcam preview</button><button disabled={!tracked?.tracked || following} onClick={() => {if(!tracker.current?.calibrate())setError('Wait for a fresh face frame.');}}>Set neutral pose</button><button disabled={!canMove || xrEngaged || phoneEngaged || !tracked?.tracked || !tracked.calibrated || following} onClick={() => {goal.current=null;follow.current=true;setFollowing(true);}}>Follow my head</button><button disabled={!following} onClick={() => void stop()}>Stop following</button><button disabled={webcamState==='off'||webcamState==='idle'} onClick={() => {void stop();stopPreview();}}>Turn webcam off</button></div></div></div></details>
+        <details className="control-section xr-options"><summary>WebXR headset</summary><Suspense fallback={<p>Loading WebXR controls…</p>}><WebXRControls snapshot={{ ...status, headAngles: status.measured?.head }} requested={head} allowed={canMove && !following && !phoneEngaged} demo={demo} onHeadChange={partial => { const ctx=xrContext.current;if(!ctx || control.current!==ctx.control || ctx.control.snapshot().controlEpoch!==ctx.epoch || phoneContext.current)throw Error('XR control context expired.');return submitHead(partial, false, 'xr'); }} onStop={() => { if(xrContext.current?.control===control.current)void stop(); }} onEngagementChange={value => { if(value && phoneContext.current)throw Error('Phone motion owns head control.');xrContext.current=value && control.current ? {control:control.current,epoch:control.current.snapshot().controlEpoch} : null;setXrEngaged(value); }} connectionKey={antennaKey} stopRevision={stopRevision} videoElement={video.current} /></Suspense></details>
+        {demo && <PhoneMotionControls key={antennaKey} demo={demo} allowed={canMove && !following && !xrEngaged}
+          getSnapshot={() => ({ ...(control.current?.snapshot() || { connected: false }), busy: mutationFlight.current.busy || latest.current.busy })} connectionKey={antennaKey} stopRevision={stopRevision}
+          onEngagementChange={value => {
+            if (!value) { if(phoneContext.current?.key===antennaKey){phoneContext.current=null;goal.current=null;setPhoneEngaged(false);}return true; }
+            const current=control.current,state=current?.snapshot();
+            if(!latest.current.demo || !state?.connected || !state.ready || !state.awake || state.measured?.running || follow.current || xrContext.current || phoneContext.current || mutationFlight.current.busy || latest.current.busy || document.hidden)return false;
+            goal.current=null;phoneContext.current={control:current,epoch:state.controlEpoch,key:antennaKey};setPhoneEngaged(true);return true;
+          }} onHeadChange={partial => {
+            const context=phoneContext.current;
+            if(!latest.current.demo || !context || context.key!==antennaKey || context.control!==control.current || context.epoch!==context.control.snapshot().controlEpoch)throw Error('Phone simulation context expired.');
+            return submitHead(partial,false,'phone');
+          }} onStop={() => {
+            const context=phoneContext.current;
+            if(latest.current.demo && context?.key===antennaKey && context.control===control.current && context.epoch===context.control.snapshot().controlEpoch)void command({action:'stop'});
+          }} />}
+        <AgentConsole snapshot={() => control.current?.snapshot() || { connected: false }} diagnosticsContext={{ transport: demo || initialDemo ? 'simulation' : 'wireless' }} execute={executeAgent} onDisarm={() => { goal.current = null; }} sessionKey={antennaKey} disabled={!status.connected || busy || following || xrEngaged || phoneEngaged} />
       </div>
     </div>
     <div className="controller-options"><ControllerDiagnostics key={antennaKey} snapshot={status} demo={demo || initialDemo} /></div>
