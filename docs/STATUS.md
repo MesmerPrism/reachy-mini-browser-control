@@ -214,7 +214,7 @@ replies. The guide sends no robot commands, opens no chooser during capability
 inspection and adds no automatic Wake, reconnect replay or admission exception.
 This page workflow still requires its own attended recovery validation.
 
-For this release, **332 offline tests**, the local production build and the
+For the **0.3.2 release**, **332 offline tests**, the local production build and the
 hosted production build passed on Node 24. Rendered browser checks covered the
 guide's status branches, unsupported/available/unavailable Bluetooth, denied
 and timed-out capability checks, unsafe hosts and malformed copied status.
@@ -223,6 +223,55 @@ head target, Stop and disarm. Desktop and 390 px mobile layouts had no horizonta
 overflow or console errors. The reviewed public inventory contains **141 source
 files**. These are offline and simulation results; hosted authenticated robot,
 media and recovery tests remain outstanding.
+
+The later **October 13 OS-network investigation** established a local IPv4 route
+failure while Wi-Fi association, the assigned address, gateway access and loopback
+daemon health remained available. NetworkManager **1.52.1-1+rpt4** reported an
+address conflict; subsequent TRACE configuration showed ACD not ready and the
+generated direct subnet route absent. A controlled temporary-route A/B trial
+restored external daemon status and reproduced the failure on removal. Installed
+service logs also confirmed that an earlier Bluetooth daemon restart ran without
+repairing the route. These later observations supersede the earlier uncertainty
+about whether that particular restart executed. An arbitrary lost reply still
+cannot establish success, and the original conflict trigger and Stop/Sleep
+causality remain unresolved.
+
+One additional on-link route was saved in the existing Wi-Fi profile and survived
+one authorized OS reboot. Reapply restored the native route too. This establishes
+persistence for that reboot, not prevention under the original trigger. The
+workaround is subnet-specific and can mask a real conflict. The stock package was
+unmodified and the daemon returned on **1.10.0** with disabled motors. That reboot
+was authorized with possible startup/shutdown motion; it was not an attended
+physical motion observation or a head/media test. All current robot facts must
+still be checked afresh before hardware actions.
+
+A separate candidate NetworkManager recovery change was validated in isolated
+x86-64 Linux namespaces using the actual NML3Cfg/n-acd and kernel route engine.
+The unchanged source retained the CONFLICT state and missing route after its
+120-second retry. The candidate reprobed, restored the native route without a
+duplicate and rejected a live duplicate. **10 Linux cases passed; four known
+upstream cases were skipped.** The recovery fixture used ONCE defense and an
+externally retained address; normal DHCP ALWAYS defense and the original field
+event were not reproduced. ARM, the robot kernel/driver, eBPF, complete DHCP
+behavior and additional USED/address/link lifecycle paths remain unverified.
+The candidate is **not installed on the robot** or included in public downloads.
+
+The **0.3.3 recovery guidance** adds a second-device comparison, an expandable
+explanation of OS routing failure, daemon-restart limitations and a redacted
+support checklist. Host and observation changes clear the comparison. The guide
+remains observation/navigation only: no robot requests, route repair, package
+installation, automatic Wake or write replay. The robot-side maintenance report
+and attended validation plan remain private preparation, not submitted or executed.
+
+For this revision, **332 offline tests** and both production builds passed on
+Node **24.13.1**. Rendered production checks at **1280×800** and **390×844** covered
+the comparison branches, reset behavior and keyboard disclosure. Offline fixtures
+covered Bluetooth availability/denial/timeout/insecure contexts, unsafe hosts and
+bounded copied-status handling. The hosted demo reached a measured simulated
+head target, then completed Stop and disarm. There were no app console errors or
+horizontal overflow; the demo emitted browser GPU performance warnings. These
+checks made no robot requests and add no physical recovery or control validation.
+Read [recovery findings and limits](RECOVERY.md) before OS maintenance.
 
 The daemon 1.11 candidate requires attended browser/robot transport, telemetry,
 camera/audio, identity and safe control checks before a separately reviewed gate

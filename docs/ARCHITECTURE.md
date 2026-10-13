@@ -61,6 +61,15 @@ the distinction between uncertain restart replies and freshly verified connectiv
 It adds no reconnect replay, automatic Wake, admission exception or required
 integration with another project.
 
+Its second-device comparison separates a device/browser access problem from a
+failure shared across devices, without claiming a timeout diagnoses OS routing.
+The guide explains the observed NetworkManager local-route failure and the
+limits of daemon restart, a network-specific workaround and an offline candidate
+fix. It does not execute SSH, change routes, disable conflict detection or install
+packages. A future privileged maintenance helper would need its own authenticated,
+explicitly authorized capability and rollback contract; it is not part of this
+release. The experimental OS patch is not bundled with the MIT controller.
+
 `npm run build` produces the local UI in `dist/`. `npm run build:pages` produces
 static hosted assets in `local/pages`, with relative URLs by default and an optional
 deployment `--base`. Neither command publishes or fetches private CAD. The original
