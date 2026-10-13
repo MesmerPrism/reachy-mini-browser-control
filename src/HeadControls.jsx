@@ -14,7 +14,7 @@ export default function HeadControls({ control, head, onManualPose, contextKey, 
 
     <h2>Head</h2><p className="panel-caption">Point the gaze; drag the head to tilt.</p>
 
-    <div className="spatial-orientation"><OrientationPad values={head.targets} measured={head.measured} limits={head.limits} disabled={head.disabled || xrEngaged} onChange={onManualPose} /><AngleControl label="Tilt" value={head.targets.roll} measured={head.measured.roll} limit={head.limits.roll} disabled={head.disabled || xrEngaged} onChange={value => onManualPose({ roll: value })} /></div>
+    <div className="spatial-orientation"><OrientationPad contextKey={contextKey} values={head.targets} measured={head.measured} limits={head.limits} disabled={head.disabled || xrEngaged} onChange={onManualPose} /><AngleControl contextKey={contextKey} label="Tilt" value={head.targets.roll} measured={head.measured.roll} limit={head.limits.roll} disabled={head.disabled || xrEngaged} onChange={value => onManualPose({ roll: value })} /></div>
 
     <div className="head-spatial-position"><PositionPad values={head.targets} measured={head.measured} limits={head.limits} disabled={head.disabled || xrEngaged} onChange={onManualPose} contextKey={contextKey} /><label className="head-depth-control"><span>Forward / back</span><input aria-label="Head forward or back in millimetres" type="range" min={-head.limits.x} max={head.limits.x} step="0.1" value={Math.max(-head.limits.x, Math.min(head.limits.x, head.targets.x))} disabled={head.disabled || xrEngaged} onChange={event => onManualPose({ x: Number(event.target.value) })} /><output>{Number(head.targets.x.toFixed(1))} mm</output></label></div>
 

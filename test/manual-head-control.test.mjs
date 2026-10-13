@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RobotControl,DemoAdapter} from '../server/control.mjs';
+import {RobotControl,DemoAdapter,ReachyAdapter} from '../server/control.mjs';
 import {headAngles,absoluteHeadPose,IDENTITY_POSE} from '../server/head-pose.mjs';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(predicate){for(let i=0;i<150&&!predicate();i++)await sleep(5);assert.ok(predicate());}
@@ -132,6 +132,9 @@ test('a snapshot started before a target ACK cannot confirm measured arrival aft
   await sleep(15);releaseWrite();await until(()=>control.headManualWriteAt>0);
   releaseSnapshot();await until(()=>control.cachedStatus?.state.headAngles?.yaw>9);
   await sleep(35);assert.ok(control.headManualGoal,'old read may report destination but cannot confirm post-write arrival');
+  const progress=control.cachedStatus.state.diagnostics.headManual;
+  assert.equal(progress.phase,'settling');assert.equal(progress.withinTolerance,true);
+  assert.equal(progress.postWriteRead,false,'matching old telemetry never claims a post-ACK read');
   assert.equal(control.headHoldNeeded,true);assert.equal(writes.length,1);
   const stopping=control.stop();await until(()=>writes.length===2);releaseWrite();await stopping;
 });
@@ -191,4 +194,140 @@ test('arrival requires both post-ACK angular and translation readback',async()=>
   const {control,adapter,writes}=fixture();adapter.setHead=async(pose,body)=>{writes.push({pose,body});adapter.headPose=absoluteHeadPose(pose,headAngles(pose).yaw,0,0,{x:0,y:0,z:0});};
   await target(control,{yaw:5,x:9});await until(()=>writes.length===1);await sleep(300);
   assert.ok(control.headManualGoal,'matching angles do not confirm translated target');assert.equal(control.headHoldNeeded,true);await control.stop();
+});
+
+test('roll settling reports coupled-axis drift without weakening full-pose arrival or resending the target',async t=>{
+  const {control,adapter,writes}=fixture();adapter.setHead=async(pose,body)=>{writes.push({pose,body});};
+  t.after(()=>control.stop());
+  await target(control,{roll:2});await until(()=>writes.length===1);
+  // Each angle alone is within one degree, but their combined error is not.
+  adapter.headPose=absoluteHeadPose(adapter.headPose,-.5,.4,1.1,{x:.2,y:0,z:.3});
+  await sleep(15);let state=await control.status();
+  assert.equal(state.headManualActive,true);
+  const progress=state.diagnostics.headManual;
+  assert.equal(progress.phase,'settling');assert.equal(progress.postWriteRead,true);
+  near(progress.axisErrorDeg.roll,.9);near(progress.axisErrorDeg.yaw,.5);near(progress.axisErrorDeg.pitch,-.4);
+  assert.ok(progress.angularErrorDeg>1);assert.ok(progress.translationErrorMm<1);assert.equal(progress.withinTolerance,false);
+  assert.deepEqual(progress.tolerance,{angularDeg:1,translationMm:1});
+  await sleep(80);assert.equal(writes.length,1,'settling waits for readback rather than replaying an acknowledged destination');
+  control.headManualGoal.deadline=Date.now()-1;
+  await until(()=>!control.headManualWorker && !control.autoRecovery && control.stopped);
+  assert.equal(writes.length,2,'one guarded measured hold follows the settling failure');
+  assert.ok(control.lastFault.details.angularErrorDeg>1);near(control.lastFault.details.axisErrorDeg.roll,.9);
+  state=await control.status();assert.equal(state.diagnostics.headManual,null);assert.equal(state.ready,true);
+});
+
+test('head settling progress never treats a pre-ACK read as arrival and clears on Stop',async t=>{
+  const {control,adapter,writes}=fixture();let release;
+  t.after(async()=>{release?.();await control.stop();});
+  adapter.setHead=async(pose,body)=>{writes.push({pose,body});if(writes.length===1)await new Promise(resolve=>release=resolve);};
+  await target(control,{roll:2});await until(()=>!!release);
+  const state=await control.status();
+  assert.equal(state.diagnostics.headManual.phase,'sending');assert.equal(state.diagnostics.headManual.postWriteRead,false);
+  const stopping=control.stop();release();await stopping;
+  assert.equal((await control.status()).diagnostics.headManual,null);
+});
+
+test('limited head ramps send the exact endpoint when the final remainder is below 0.01',async t=>{
+  for(const axis of ['yaw','x'])for(const value of [.105,-.105]) {
+    const {control,writes}=fixture();t.after(()=>control.stop());
+    await target(control,{[axis]:value,speedLimit:5,linearSpeedLimit:1});await control.headManualWorker;
+    const sent=writes.at(-1).pose,actual=axis==='yaw' ? headAngles(sent).yaw : sent[3]*1000;
+    near(actual,value);
+    assert.equal(writes.length,axis==='yaw'?2:6,'the remaining bounded step is sent before settling');
+  }
+});
+
+test('manual write diagnostics distinguish a pending POST from its ACK and survive Stop',async t=>{
+  const {control,adapter,writes}=fixture();let release;
+  t.after(async()=>{release?.();await control.stop();});
+  adapter.setHead=async(pose,body)=>{writes.push({pose,body});adapter.headPose=pose;if(writes.length===1)await new Promise(resolve=>release=resolve);};
+  await target(control,{yaw:1.1});await until(()=>!!release);
+  let state=await control.status(),write=state.diagnostics.lastManualHeadWrite;
+  assert.equal(write.outcome,'pending');assert.equal(write.completedAt,null);assert.equal(write.writeMs,null);
+  assert.equal(write.sent.yaw,1.1);assert.equal(write.sequence,1);assert.equal(write.epoch,0);
+  assert.equal(state.diagnostics.headManual.goalAcknowledged,false);assert.equal(state.diagnostics.headManual.postWriteRead,false);
+  assert.deepEqual(write.headPose,writes[0].pose);
+  // Read-only diagnostics are detached from the writer's retained receipt.
+  write.sent.yaw=99;write.headPose[0]=99;
+  release();await control.headManualWorker;
+  state=await control.status();write=state.diagnostics.lastManualHeadWrite;
+  assert.equal(state.diagnostics.headManual,null);assert.equal(write.outcome,'acknowledged');assert.equal(write.sent.yaw,1.1);
+  assert.ok(write.completedAt>=write.startedAt);assert.equal(write.writeMs,write.completedAt-write.startedAt);
+  assert.deepEqual(write.headPose,writes[0].pose);
+  await control.stop();state=await control.status();
+  assert.deepEqual(state.diagnostics.lastManualHeadWrite,write);assert.ok(state.controlEpoch>write.epoch);assert.equal(writes.length,1);
+});
+
+test('fresh yaw plateau retains the acknowledged full goal through one measured recovery hold',async t=>{
+  const {control,adapter,writes}=fixture();t.after(()=>control.stop());
+  adapter.headManualLimits={yaw:2,pitch:2,roll:2,x:2,y:2,z:2,pilot:true};
+  adapter.headPose=absoluteHeadPose(adapter.headPose,-.3,2.1,2.2,{x:-2.1,y:1.8,z:-2.2});adapter.bodyYaw=.01;
+  const measured=absoluteHeadPose(adapter.headPose,-.2,2.12,2.25,{x:-2.2,y:1.9,z:-2.4});
+  adapter.setHead=async(pose,body)=>{writes.push({pose,body});adapter.headPose=[...measured];};
+  await target(control,{yaw:1.1,speedLimit:5,linearSpeedLimit:1});await until(()=>!control.headManualPending);
+  await sleep(10);let state=await control.status(),progress=state.diagnostics.headManual;
+  assert.equal(progress.phase,'settling');assert.equal(progress.goalAcknowledged,true);assert.equal(progress.postWriteRead,true);
+  assert.equal(progress.withinTolerance,false);near(progress.axisErrorDeg.yaw,1.3);
+  assert.deepEqual(progress.lastWrite.sent,progress.requested);assert.equal(progress.lastWrite.bodyYawRad,.01);
+  assert.equal(progress.lastWrite.outcome,'acknowledged');near(headAngles(progress.lastWrite.headPose).yaw,1.1);
+  const destinationWrites=writes.length,lastWrite=progress.lastWrite;
+  await sleep(80);assert.equal(writes.length,destinationWrites,'acknowledged destination is never replayed while settling');
+  control.headManualGoal.deadline=Date.now()-1;
+  await until(()=>control.stopped && !control.autoRecovery && !control.headManualWorker);
+  assert.equal(writes.length,destinationWrites+1);assert.deepEqual(writes.at(-1),{pose:measured,body:.01});
+  assert.equal(control.lastFault.kind,'unsettled-target');assert.equal(control.lastFault.details.goalAcknowledged,true);
+  assert.deepEqual(control.lastFault.details.lastWrite,lastWrite);assert.ok(control.lastFault.details.angularErrorDeg>1);
+  state=await control.status();assert.equal(state.ready,true);assert.equal(state.diagnostics.headManual,null);
+  assert.deepEqual(state.diagnostics.lastManualHeadWrite,lastWrite,'measured hold does not replace the failed destination receipt');
+});
+
+test('failed and unknown manual writes retain their outcome without claiming goal acknowledgement',async t=>{
+  for(const unknown of [false,true]) {
+    const {control,adapter,writes}=fixture();t.after(()=>control.stop().catch(()=>{}));
+    adapter.setHead=async(pose,body)=>{
+      writes.push({pose,body});
+      if(writes.length===1) {if(unknown)adapter.uncertain='target outcome unknown';throw Error(unknown?'POST timeout':'target rejected');}
+      adapter.headPose=pose;
+    };
+    await target(control,{yaw:1.1});await control.headManualWorker;
+    const state=await control.status(),write=state.diagnostics.lastManualHeadWrite;
+    assert.equal(write.outcome,unknown?'unknown':'failed');assert.ok(write.completedAt>=write.startedAt);
+    assert.equal(state.diagnostics.lastFault.details.goalAcknowledged,false);
+    assert.deepEqual(state.diagnostics.lastFault.details.lastWrite,write);assert.equal(state.diagnostics.headManual,null);
+    assert.equal(state.ready,false);assert.equal(control.stopPending,true);assert.equal(control.autoRecovery,null);
+    await sleep(30);assert.equal(writes.length,1);
+  }
+});
+
+test('manual yaw reaches the daemon JSON payload in native units with omitted pose fields preserved',async t=>{
+  const demo=new DemoAdapter();demo.awake=true;demo.headPose=absoluteHeadPose(demo.headPose,-.3,.4,.5,{x:.4,y:-.7,z:1.2});demo.bodyYaw=-.017;
+  const baseline=[...demo.headPose],payloads=[];
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    const route=new URL(url).pathname;let response;
+    if(route==='/api/move/set_target') {
+      assert.equal(options.method,'POST');const body=JSON.parse(options.body);payloads.push(body);
+      demo.headPose=body.target_head_pose.m;demo.bodyYaw=body.target_body_yaw;response={status:'ok'};
+    } else {
+      assert.equal(options.method,'GET');
+      const values={
+        '/api/daemon/status':{hardware_id:'test',version:'1.10.0',state:'running',backend_status:{ready:true,motor_control_mode:'enabled'}},
+        '/api/daemon/robot-app-lock-status':{state:'free'},'/api/apps/current-app-status':null,
+        '/api/state/full':{head_pose:{m:demo.headPose},body_yaw:demo.bodyYaw,antennas_position:[0,0]},
+        '/api/move/running':[], '/api/media/status':{available:true,released:false,no_media:false}
+      };
+      assert.ok(Object.hasOwn(values,route),route);response=values[route];
+    }
+    return new Response(JSON.stringify(response),{status:200,headers:{'Content-Type':'application/json'}});
+  });
+  const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0',headTrackingEnabled:true,headTrackingPilot:true});
+  const control=new RobotControl(adapter);t.after(()=>control.stop());
+  await target(control,{yaw:1.1});await control.headManualWorker;
+  assert.equal(payloads.length,1);const sent=payloads[0],angles=headAngles(sent.target_head_pose.m);
+  assert.deepEqual(Object.keys(sent).sort(),['target_body_yaw','target_head_pose']);assert.equal(sent.target_body_yaw,-.017);
+  near(angles.yaw,1.1);near(angles.pitch,.4);near(angles.roll,.5);
+  for(const index of [3,7,11])assert.equal(sent.target_head_pose.m[index],baseline[index]);
+  const state=await control.status();assert.equal(state.headManualActive,false);
+  assert.deepEqual(state.diagnostics.lastManualHeadWrite.headPose,sent.target_head_pose.m);
+  assert.equal(state.diagnostics.lastManualHeadWrite.outcome,'acknowledged');assert.equal(state.diagnostics.lastManualHeadWrite.bodyYawRad,-.017);
 });

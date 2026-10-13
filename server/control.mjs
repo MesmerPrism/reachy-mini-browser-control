@@ -1,4 +1,4 @@
-import { MANUAL_HEAD_AXES, headPositionMm, manualHeadDistance, slewManualHead, headAngles, absoluteHeadPose, rigidPose, relativeHeadPose, slewHead, IDENTITY_POSE, HEAD_FRAME_MS, HEAD_WATCHDOG_MS, HEAD_YAW_LIMIT, HEAD_PITCH_LIMIT } from './head-pose.mjs';
+import { MANUAL_HEAD_AXES, headPositionMm, manualHeadDistance, manualHeadProgress, slewManualHead, headAngles, absoluteHeadPose, rigidPose, relativeHeadPose, slewHead, IDENTITY_POSE, HEAD_FRAME_MS, HEAD_WATCHDOG_MS, HEAD_YAW_LIMIT, HEAD_PITCH_LIMIT } from './head-pose.mjs';
 export const LIBRARIES = ['pollen-robotics/reachy-mini-emotions-library'];
 export const UI_LIMIT = 90;
 export const ANTENNA_FRAME_MS = 20;
@@ -6,6 +6,7 @@ export const ANTENNA_SPEED_MIN = 5;
 export const ANTENNA_SPEED_MAX = 120;
 const STATUS_REFRESH_MS = 250;
 const STATUS_MAX_AGE_MS = 500;
+const MEDIA_REFRESH_MS = 1500;
 const rad = deg => deg * Math.PI / 180;
 const deg = value => value * 180 / Math.PI;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -28,15 +29,20 @@ export class RobotControl {
     this.headStarting = false; this.headSession = null; this.headPending = null; this.headWorker = null; this.headHoldNeeded = false;
     this.headManualStarting = false; this.headManualPending = null; this.headManualGoal = null; this.headManualWorker = null;
     this.headManualSent = null; this.headManualRevision = 0; this.headManualNeedsRefresh = false; this.headManualWriteAt = 0;
-    this.lastFault = null; this.snapshotDiagnostics = null; this.recoveryNeeded = null; this.autoRecovery = null; this.recoveryBlocked = false;
+    this.headManualWrite = null; this.headManualWriteSequence = 0;
+    this.lastFault = null; this.snapshotDiagnostics = null; this.lastSlowSnapshot = null; this.recoveryNeeded = null; this.autoRecovery = null; this.recoveryBlocked = false;
     this.policyRevision = 0; this.rampNeedsRefresh = false;
   }
   readSnapshot() {
     if (!this.snapshotRead) {
       const startedAt = Date.now();
+      const record = error => {
+        this.snapshotDiagnostics={startedAt,completedAt:Date.now(),readMs:Date.now()-startedAt,requests:this.adapter.snapshotTiming?.requests || null,...(error?{error:error.message,route:error.requestRoute || null}:{})};
+        if(this.snapshotDiagnostics.readMs>STATUS_MAX_AGE_MS)this.lastSlowSnapshot=this.snapshotDiagnostics;
+      };
       this.snapshotRead = Promise.resolve().then(() => this.adapter.snapshot())
-        .then(info => {this.snapshotDiagnostics={startedAt,completedAt:Date.now(),readMs:Date.now()-startedAt};return { info, startedAt };})
-        .catch(error=>{this.snapshotDiagnostics={startedAt,completedAt:Date.now(),readMs:Date.now()-startedAt,error:error.message,route:error.requestRoute || null};throw error;})
+        .then(info => {record();return { info, startedAt };})
+        .catch(error=>{record(error);throw error;})
         .finally(() => { this.snapshotRead = null; });
     }
     return this.snapshotRead;
@@ -55,7 +61,7 @@ export class RobotControl {
       if (!info.awake && !this.operation) this.lastSent = null;
       let measuredHeadAngles = null; let measuredHeadPosition = null; try { measuredHeadAngles = headAngles(info.headPose); measuredHeadPosition = headPositionMm(info.headPose); } catch {}
       const state = { ...info, headAngles: measuredHeadAngles, headPositionMm: measuredHeadPosition, headManualActive: !!this.headManualWorker || !!this.headManualGoal, headManualTarget: this.headManualGoal ? {...Object.fromEntries(MANUAL_HEAD_AXES.map(axis=>[axis,this.headManualGoal[axis]])),speedLimit:this.headManualGoal.speedLimit,linearSpeedLimit:this.headManualGoal.linearSpeedLimit} : null, busy: !!this.operation || info.moves.length > 0, adjusting: !!this.worker || !!this.headWorker || !!this.headManualWorker, headTrackingEnabled: this.adapter.headTrackingEnabled === true, headTrackingLimits: this.adapter.headTrackingLimits, headManualLimits: this.adapter.headManualLimits, headTrackingActive: !!this.headSession, headTrackingSession: this.headSession?.id || null, headTrackingAngles: this.headSession ? {...this.headSession.sent} : null,
-        diagnostics: this.diagnostics(), recoveryNeeded: this.recoveryNeeded, blockedReason, controlEpoch: this.epoch, activity: this.activity, message: this.message,
+        diagnostics: this.diagnostics({...measuredHeadAngles,...measuredHeadPosition},startedAt), recoveryNeeded: this.recoveryNeeded, blockedReason, controlEpoch: this.epoch, activity: this.activity, message: this.message,
         ready: info.ready && !blockedReason, stopped: this.stopped };
       this.cachedStatus = { state, startedAt };
       return state;
@@ -70,8 +76,24 @@ export class RobotControl {
         diagnostics: this.diagnostics(), recoveryNeeded: this.recoveryNeeded, blockedReason: error.message, message: error.message, activity: this.activity };
     }
   }
-  diagnostics() {
-    return {snapshot:this.snapshotDiagnostics ? {...this.snapshotDiagnostics,startAgeMs:Date.now()-this.snapshotDiagnostics.startedAt} : null,lastFault:this.lastFault,requestFailure:this.adapter.lastRequestFailure || null,media:this.adapter.mediaDiagnostics || null};
+  diagnostics(measured=null,sampleStartedAt=null) {
+    const robotState=this.adapter.stateDiagnostics;
+    return {snapshot:this.snapshotDiagnostics ? {...this.snapshotDiagnostics,startAgeMs:Date.now()-this.snapshotDiagnostics.startedAt} : null,lastSlowSnapshot:this.lastSlowSnapshot,
+      headManual:this.manualHeadDiagnostics(measured,sampleStartedAt),lastManualHeadWrite:this.manualHeadWriteReceipt(),
+      robotState:robotState ? {...robotState,headJoints:robotState.headJoints ? [...robotState.headJoints] : null} : null,
+      lastFault:this.lastFault,requestFailure:this.adapter.lastRequestFailure || null,lastRequest:this.adapter.lastRequestTiming || null,media:this.adapter.mediaDiagnostics || null};
+  }
+  manualHeadWriteReceipt() {
+    const write=this.headManualWrite;
+    return write ? {...write,sent:{...write.sent},headPose:[...write.headPose]} : null;
+  }
+  manualHeadDiagnostics(measured,sampleStartedAt=null) {
+    const target=this.headManualGoal,progress=manualHeadProgress(target,measured);
+    if(!progress)return null;
+    const lastWrite=this.manualHeadWriteReceipt();
+    return {...progress,phase:this.headManualPending?'sending':'settling',
+      goalAcknowledged:!this.headManualPending && lastWrite?.outcome==='acknowledged' && lastWrite.epoch===target.epoch && MANUAL_HEAD_AXES.every(axis=>lastWrite.sent[axis]===target[axis]),
+      lastWrite,postWriteRead:!this.headManualPending && sampleStartedAt>this.headManualWriteAt,remainingMs:Math.max(0,target.deadline-Date.now())};
   }
   recordFault(error,fallback='motion-failed') {
     const message=error.message || String(error);
@@ -232,6 +254,7 @@ export class RobotControl {
       const distance=manualHeadDistance({...state.headAngles,...state.headPositionMm},goal);
       const travelSeconds=Math.max(speedLimit===null ? 0 : distance.angular/speedLimit,linearSpeedLimit===null ? 0 : distance.linear/linearSpeedLimit);
       const timeout=Math.min(120000,Math.max(10000,travelSeconds*2000+5000));
+      if(!this.headManualGoal) {this.headManualWrite=null;this.headManualWriteSequence=0;}
       const target={...goal,baseline,bodyYaw,speedLimit,linearSpeedLimit,revision:this.headManualRevision,epoch:this.epoch,deadline:Date.now()+timeout};
       this.headManualPending=target;this.headManualGoal=target;this.stopped=false;
       this.startManualHeadWorker();
@@ -241,6 +264,9 @@ export class RobotControl {
   startManualHeadWorker() {
     if(this.headManualWorker)return;
     const worker=this.pumpManualHead().catch(e=>{
+      const current=this.cachedStatus?.state;
+      e.motionDiagnostics ??= this.manualHeadDiagnostics({...current?.headAngles,...current?.headPositionMm},this.cachedStatus?.startedAt) || {lastWrite:this.manualHeadWriteReceipt()};
+      e.motionDiagnostics={...e.motionDiagnostics,robotState:current?.diagnostics?.robotState || null};
       this.headManualPending=null;this.headManualGoal=null;this.headManualSent=null;
       this.stopPending ||= this.headHoldNeeded;this.message=e.message;this.recordFault(e);
     }).finally(()=>{
@@ -271,8 +297,7 @@ export class RobotControl {
         const error=Error('Head movement did not settle; measured hold required');
         const current=this.cachedStatus?.state;
         if(current?.headAngles && current?.headPositionMm) {
-          const measured={...current.headAngles,...current.headPositionMm},distance=manualHeadDistance(measured,target);
-          error.motionDiagnostics={requested:Object.fromEntries(MANUAL_HEAD_AXES.map(axis=>[axis,target[axis]])),measured,angularErrorDeg:distance.angular,translationErrorMm:distance.linear};
+          error.motionDiagnostics=this.manualHeadDiagnostics({...current.headAngles,...current.headPositionMm},this.cachedStatus.startedAt);
         }
         throw error;
       }
@@ -284,8 +309,8 @@ export class RobotControl {
       if(!state.headAngles || !state.headPositionMm)throw Error('Measured head pose unavailable');
       const measured={...state.headAngles,...state.headPositionMm};
       if(!this.headManualPending) {
-        const distance=manualHeadDistance(measured,target);
-        if(cached.startedAt>this.headManualWriteAt && distance.angular<=1 && distance.linear<=1) {
+        const progress=manualHeadProgress(target,measured);
+        if(cached.startedAt>this.headManualWriteAt && progress?.withinTolerance) {
           this.headManualGoal=null;this.headManualSent=null;this.headHoldNeeded=false;break;
         }
         await pause(HEAD_FRAME_MS);continue;
@@ -294,13 +319,22 @@ export class RobotControl {
       const next=slewManualHead(base,target,HEAD_FRAME_MS/1000);
       if(target.epoch!==this.epoch)break;
       this.headHoldNeeded=true;
-      await this.adapter.setHead(absoluteHeadPose(target.baseline,next.yaw,next.pitch,next.roll,next),target.bodyYaw);
-      this.headManualWriteAt=Date.now();
+      const pose=absoluteHeadPose(target.baseline,next.yaw,next.pitch,next.roll,next),startedAt=Date.now();
+      const write={epoch:target.epoch,sequence:++this.headManualWriteSequence,sent:{...next},headPose:[...pose],bodyYawRad:target.bodyYaw,startedAt,completedAt:null,writeMs:null,outcome:'pending'};
+      this.headManualWrite=write;
+      try {
+        await this.adapter.setHead(pose,target.bodyYaw);
+        this.headManualWriteAt=Date.now();
+        this.headManualWrite={...write,completedAt:this.headManualWriteAt,writeMs:this.headManualWriteAt-startedAt,outcome:'acknowledged'};
+      } catch(error) {
+        const completedAt=Date.now();
+        this.headManualWrite={...write,completedAt,writeMs:completedAt-startedAt,outcome:this.adapter.uncertain?'unknown':'failed',error:error.message};
+        throw error;
+      }
       if(this.headManualGoal && this.headManualGoal.revision!==target.revision) {
         this.headManualSent=null;this.headManualNeedsRefresh=true;
       } else this.headManualSent=next;
-      const remaining=manualHeadDistance(next,target);
-      if(this.headManualPending===target && remaining.angular<.01 && remaining.linear<.01)this.headManualPending=null;
+      if(this.headManualPending===target && MANUAL_HEAD_AXES.every(axis=>next[axis]===target[axis]))this.headManualPending=null;
       if(this.headManualPending || this.headManualGoal)await pause(Math.max(0,HEAD_FRAME_MS-(performance.now()-started)));
     }} finally {clearInterval(monitor);}
   }
@@ -543,14 +577,16 @@ export class ReachyAdapter {
     this.origin = url.origin;
     this.signalUrl = `ws://${url.hostname}:8443`;
   }
-  async request(route, method = 'GET', body, timeout = 3500) {
-    let r; const startedAt=Date.now();
+  async request(route, method = 'GET', body, timeout = 3500, reportTiming = null) {
+    let r,headersAt,error; const startedAt=Date.now();
     try {
       r = await fetch(this.origin + route, { method, signal: AbortSignal.timeout(timeout),
         ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) });
+      headersAt=Date.now();
       if (!r.ok) throw Error(`Reachy returned HTTP ${r.status} for ${route}`);
       return await r.json();
     } catch (e) {
+      error=e;
       e.requestRoute=route;this.lastRequestFailure={route,method,readMs:Date.now()-startedAt,reason:e.message,at:Date.now()};
       if (method !== 'GET' && (!r || r.ok || r.status >= 500) && route !== '/api/move/stop') {
         // HTTP abort cannot retract a daemon command. Do not pretend it was
@@ -559,19 +595,38 @@ export class ReachyAdapter {
         this.config.onUncertain?.(this.uncertain);
       }
       throw e;
+    } finally {
+      const completedAt=Date.now();
+      this.lastRequestTiming={route,method,startedAt,completedAt,readMs:completedAt-startedAt,headerMs:headersAt===undefined?null:headersAt-startedAt,bodyMs:headersAt===undefined?null:completedAt-headersAt,status:r?.status || null,...(error?{error:error.message}:{})};
+      reportTiming?.(this.lastRequestTiming);
     }
   }
   async snapshot() {
     // Video readiness is optional control information. A media read failure or
     // slow video stack must not invalidate motor ownership or stop controls.
-    if(!this.mediaRead) {
+    if(!this.mediaRead && (!this.mediaDiagnostics || Date.now()-this.mediaDiagnostics.at>=MEDIA_REFRESH_MS)) {
       this.mediaRead=this.request('/api/media/status').then(media=>{
         this.mediaState=media;this.mediaDiagnostics={ready:!!media.available && !media.released && !media.no_media,at:Date.now(),error:null};
       }).catch(error=>{this.mediaState=null;this.mediaDiagnostics={ready:false,at:Date.now(),error:error.message};}).finally(()=>{this.mediaRead=null;});
     }
-    const [d, lock, app, state, moves] = await Promise.all([
-      '/api/daemon/status', '/api/daemon/robot-app-lock-status', '/api/apps/current-app-status',
-      '/api/state/full?use_pose_matrix=true', '/api/move/running'].map(p => this.request(p)));
+    const requests=['/api/daemon/status', '/api/daemon/robot-app-lock-status', '/api/apps/current-app-status','/api/state/full?use_pose_matrix=true', '/api/move/running'].map(route=>({route,method:'GET',startedAt:Date.now()}));
+    const results=await Promise.allSettled(requests.map(async timing=>{
+      try {return await this.request(timing.route,'GET',null,3500,record=>Object.assign(timing,record));}
+      catch(error){timing.error=error.message;throw error;}
+      finally {timing.completedAt ??= Date.now();timing.readMs ??= timing.completedAt-timing.startedAt;}
+    }));
+    // Keep the coalesced snapshot alive until its whole mandatory batch drains.
+    // One fast failure must not leave older requests overlapping the next poll.
+    this.snapshotTiming={requests};
+    const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
+    const [d, lock, app, state, moves]=results.map(result=>result.value);
+    const poseRead=requests.find(request=>request.route==='/api/state/full?use_pose_matrix=true');
+    // Retain optional native evidence without equating the daemon clock with
+    // this machine's clock or using unchanged encoder values as a stale gate.
+    this.stateDiagnostics={readStartedAt:poseRead.startedAt,readCompletedAt:poseRead.completedAt,
+      timestamp:typeof state.timestamp==='string' && state.timestamp.length<=64 ? state.timestamp : null,
+      headJoints:Array.isArray(state.head_joints) && state.head_joints.length>0 && state.head_joints.length<=16 && state.head_joints.every(Number.isFinite) ? [...state.head_joints] : null,
+      controlMode:typeof state.control_mode==='string' && state.control_mode.length<=64 ? state.control_mode : null};
     const reasons = [];
     if (this.uncertain) reasons.push(this.uncertain);
     if (d.hardware_id !== this.config.expectedHardwareId) reasons.push('Robot identity differs from configuration');

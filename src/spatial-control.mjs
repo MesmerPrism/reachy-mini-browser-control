@@ -21,3 +21,40 @@ export function dialTarget(clientX, clientY, rect, limit) {
   // Below the pivot still selects the nearest end, never wraps around.
   return boundTarget(Math.atan2(x, Math.max(0, y)) * 180 / Math.PI, limit);
 }
+
+// One pointer owns a gesture in the context that admitted its initial press.
+// Cancelling forgets that press; renewed eligibility never resumes it.
+export function createSurfaceGesture({ getContext, mapTarget, onChange, onStart = () => null }) {
+  let held = null;
+  const cancel = () => {
+    const previous = held; held = null;
+    if (previous?.element.hasPointerCapture(previous.id)) previous.element.releasePointerCapture(previous.id);
+  };
+  const move = event => {
+    if (!held || held.id !== event.pointerId) return;
+    const current = getContext();
+    if (current.disabled || current.hidden || current.contextKey !== held.contextKey) { cancel(); return; }
+    try {
+      const target = mapTarget(event, held.start);
+      if (target !== null && target !== undefined && onChange(target) === false) cancel();
+    } catch { cancel(); }
+  };
+  const end = event => { if (held?.id === event.pointerId) cancel(); };
+  return {
+    cancel,
+    onPointerDown: event => {
+      const current = getContext();
+      if (current.disabled || current.hidden || event.button !== 0 || held || event.target.closest?.('button,input,select,summary,a,[data-no-aim]')) return;
+      event.preventDefault();
+      try {
+        held = { id: event.pointerId, element: event.currentTarget, contextKey: current.contextKey, start: onStart(event) };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        move(event);
+      } catch { cancel(); }
+    },
+    onPointerMove: move,
+    onPointerUp: end,
+    onPointerCancel: end,
+    onLostPointerCapture: end,
+  };
+}

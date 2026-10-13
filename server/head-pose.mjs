@@ -82,6 +82,8 @@ export function absoluteHeadPose(baseline,yaw,pitch,roll=headAngles(baseline).ro
 }
 
 export const MANUAL_HEAD_AXES = ['yaw','pitch','roll','x','y','z'];
+export const HEAD_ARRIVAL_ANGLE_DEG = 1;
+export const HEAD_ARRIVAL_POSITION_MM = 1;
 export function headPositionMm(value) {
   const m=rigidPose(value);
   return {x:m[3]*1000,y:m[7]*1000,z:m[11]*1000};
@@ -89,10 +91,21 @@ export function headPositionMm(value) {
 export function manualHeadDistance(from,to) {
   return {angular:Math.hypot(...['yaw','pitch','roll'].map(axis=>to[axis]-from[axis])),linear:Math.hypot(...['x','y','z'].map(axis=>to[axis]-from[axis]))};
 }
+export function manualHeadProgress(requested,measured) {
+  if(!MANUAL_HEAD_AXES.every(axis=>Number.isFinite(requested?.[axis]) && Number.isFinite(measured?.[axis])))return null;
+  const distance=manualHeadDistance(measured,requested);
+  return {requested:Object.fromEntries(MANUAL_HEAD_AXES.map(axis=>[axis,requested[axis]])),measured:Object.fromEntries(MANUAL_HEAD_AXES.map(axis=>[axis,measured[axis]])),
+    axisErrorDeg:Object.fromEntries(['yaw','pitch','roll'].map(axis=>[axis,requested[axis]-measured[axis]])),
+    axisErrorMm:Object.fromEntries(['x','y','z'].map(axis=>[axis,requested[axis]-measured[axis]])),
+    angularErrorDeg:distance.angular,translationErrorMm:distance.linear,
+    tolerance:{angularDeg:HEAD_ARRIVAL_ANGLE_DEG,translationMm:HEAD_ARRIVAL_POSITION_MM},
+    withinTolerance:distance.angular<=HEAD_ARRIVAL_ANGLE_DEG && distance.linear<=HEAD_ARRIVAL_POSITION_MM};
+}
 export function slewManualHead(previous,target,seconds) {
   const distance=manualHeadDistance(previous,target),dt=Math.max(0,Math.min(seconds,HEAD_FRAME_MS/1000));
   const angular=target.speedLimit===null ? Infinity : target.speedLimit*dt;
   const linear=target.linearSpeedLimit===null ? Infinity : target.linearSpeedLimit*dt;
   const scale=Math.min(1,distance.angular ? angular/distance.angular:1,distance.linear ? linear/distance.linear:1);
+  if(scale===1)return Object.fromEntries(MANUAL_HEAD_AXES.map(axis=>[axis,target[axis]]));
   return Object.fromEntries(MANUAL_HEAD_AXES.map(axis=>[axis,previous[axis]+(target[axis]-previous[axis])*scale]));
 }

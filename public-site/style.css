@@ -51,6 +51,19 @@ h1,h2,h3,p,li,summary { overflow-wrap: break-word; } .control-section>button,.co
 .robot-links { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 12px 0; }
 #connect, #demo { margin-top: 16px; }
 #connect>h2, #demo>h2 { margin-top: 0; }
+.recovery-guide { max-width: 82ch; }
+.recovery-steps { padding-left: 24px; }
+.recovery-steps>li { margin: 24px 0; }
+.recovery-steps h3 { font-size: 1.1em; margin-bottom: 8px; }
+.recovery-steps input:not([type=radio]), .recovery-steps textarea { width: 100%; }
+.recovery-steps fieldset { border: 1px solid #d1d5cc; padding: 12px; margin: 16px 0; }
+.recovery-steps legend { padding-inline: 4px; }
+.recovery-steps .checkbox { margin: 8px 0; }
+.recovery-steps .checkbox input { width: auto; flex: 0 0 auto; }
+.recovery-option { margin: 12px 0; }
+.recovery-option>summary { font-weight: 600; }
+.recovery-result { border-left: 3px solid #8e9b91; padding-left: 12px; }
+.recovery-references { font-size: .9em; }
 .control-section h2, .control-section h3 { margin-top: 0; margin-bottom: 8px; }
 @media(max-width:760px) { .page-heading h1 { font-size: 1.5em; } .page-heading { align-items: center; } }
 
