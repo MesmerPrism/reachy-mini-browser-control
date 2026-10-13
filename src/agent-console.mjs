@@ -1,9 +1,11 @@
+import { controllerDiagnostics } from './controller-diagnostics.mjs';
+
 export const AGENT_HELP = Object.freeze({
-  commands: ['help', 'status', 'capabilities', 'head yaw=2 pitch=-2 roll=0', 'antennas left=10 right=-10', 'stop', 'wake', 'sleep'],
+  commands: ['help', 'status', 'capabilities', 'diagnostics', 'head yaw=2 pitch=-2 roll=0', 'antennas left=10 right=-10', 'stop', 'wake', 'sleep'],
   units: 'Head angles and antennas: degrees. Head x, y, z: millimetres.',
   writes: 'Call window.reachyAgent.arm() explicitly before motion or power commands. Explicit Stop on the active connection needs no arm. Arming does not connect, wake or move. Disarm revokes agent writes and discards unsent targets; it is not Stop. Commands use the same connection, freshness and motion gates as the controls. No shell execution.',
 });
-const reads = new Set(['help', 'status', 'capabilities']);
+const reads = new Set(['help', 'status', 'capabilities', 'diagnostics']);
 const limits = { head: { yaw: 20, pitch: 15, roll: 15, x: 10, y: 10, z: 10 }, antennas: { left: 90, right: 90 } };
 export function parseAgentCommand(text) {
   if (typeof text !== 'string' || text.length > 512) throw Error('Enter one command, up to 512 characters.');
@@ -33,11 +35,12 @@ export function agentStatus(snapshot = {}) {
     measured: measured ? { head: { ...measured.head }, antennas: { ...measured.antennas }, bodyYaw: measured.bodyYaw,
       running: measured.running, receivedAt: measured.receivedAt } : null };
 }
-export async function runAgentCommand(text, { snapshot, writesAllowed = false, execute }) {
+export async function runAgentCommand(text, { snapshot, writesAllowed = false, execute, diagnosticsContext }) {
   const command = parseAgentCommand(text);
   const state = snapshot();
   if (command.name === 'help') return AGENT_HELP;
   if (command.name === 'status') return agentStatus(state);
+  if (command.name === 'diagnostics') return controllerDiagnostics(state, { ...diagnosticsContext, armed: writesAllowed });
   if (command.name === 'capabilities') return { ...AGENT_HELP, autoWake: false, autoReconnect: false,
     writesEnabled: writesAllowed, targetAcknowledgement: state.targetAcknowledgement ?? 'adapter-dependent',
     webxr: 'Use the WebXR section; requires a supported browser and explicit session start.' };
@@ -78,7 +81,7 @@ export function createAgentSession({ context, execute, onChange = () => {}, onDi
     isArmed: () => { checked(); return armed !== null; },
     run: text => {
       const { c } = checked();
-      return runAgentCommand(text, { snapshot: c.snapshot, execute, writesAllowed: armed !== null });
+      return runAgentCommand(text, { snapshot: c.snapshot, execute, writesAllowed: armed !== null, diagnosticsContext: c.diagnosticsContext });
     },
     dispose: () => { disarm(); active = false; },
   });
@@ -89,7 +92,7 @@ export function registerAgentTools(modelContext, run, { arm, disarm } = {}) {
   const controller = new AbortController();
   const registered = [];
   try {
-    const names = ['help', 'status', 'capabilities', ...(arm && disarm ? ['arm', 'disarm', 'command'] : [])];
+    const names = ['help', 'status', 'capabilities', 'diagnostics', ...(arm && disarm ? ['arm', 'disarm', 'command'] : [])];
     for (const name of names) {
       const toolName = `reachy_${name}`;
       const readOnly = reads.has(name);

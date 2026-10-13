@@ -273,6 +273,40 @@ horizontal overflow; the demo emitted browser GPU performance warnings. These
 checks made no robot requests and add no physical recovery or control validation.
 Read [recovery findings and limits](RECOVERY.md) before OS maintenance.
 
+The **0.3.4 controller diagnostics** adds a read-only, copyable connection summary
+and `window.reachyAgent.diagnostics()`. It excludes identity, addresses,
+credentials and raw errors. Receipt freshness is separate from unknown sensor
+age; stale or missing motor evidence is unknown, and disconnecting does not
+resolve an earlier uncertain command. Simulation is labelled explicitly.
+Staged manual head/antenna sending expires 15 seconds after new input. Only a
+later measurement can satisfy the existing explicit-axis comparison. Expiry
+discards unsent targets without automatic Stop or any replay.
+
+This revision passed **348 offline tests** and both production builds on Node
+**24.13.1**. Browser simulation covers a non-converging target with fresh receipts,
+deadline expiry without automatic Stop, stale telemetry, a reported running move,
+uncertain Wake and reconnect without replay. Production desktop/mobile checks
+cover the copyable summary, disconnected diagnostics and measured demo controls.
+These checks add no hardware validation. Public source now includes **146 reviewed
+files**; raw browser receipts and screenshots remain private.
+
+Later separate Linux runs added **six protective edge cases** and **two real DHCP
+transactions** to the earlier network investigation. A live-duplicate link reset
+was accepted by both baseline and candidate source, exposing an unresolved policy
+outside the patch. The candidate remains uninstalled and unsuitable for production
+without further work. No single full-suite or original-event reproduction is
+claimed. See [updated recovery findings](RECOVERY.md).
+
+A subsequent authorized guarded local yaw pilot used a freshly verified address
+after an old address stopped answering; the native and workaround routes remained
+present. Explicit Wake preceded movement. The negative target met the unchanged
+settling criterion; the next target failed at **1.23° combined angular error** and
+**0.39 mm translation error**, with later receipts plateauing. Separate observation
+windows after Stop and after Sleep remained reachable. This was local bridge
+telemetry evidence without an attended visual observation, not hosted browser
+physical validation. Reliable yaw response and Stop/Sleep conflict causality remain
+unverified. Further physical testing waits for an attended operator.
+
 The daemon 1.11 candidate requires attended browser/robot transport, telemetry,
 camera/audio, identity and safe control checks before a separately reviewed gate
 change. Offline success alone is insufficient. Read [candidate compatibility](DAEMON_1_11_COMPATIBILITY.md)

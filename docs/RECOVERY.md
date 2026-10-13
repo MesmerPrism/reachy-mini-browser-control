@@ -114,19 +114,30 @@ that route absent when a live duplicate answered. An additional test demonstrate
 that an explicit static route can remain during a conflict, illustrating the
 workaround's limitation.
 
-The recovery fixture used ONCE defense and an externally retained address with a
-short probe timeout; it did not reproduce the unexplained field conflict under
-normal DHCP ALWAYS defense or run a complete DHCP transaction. The candidate also
-changes retries from USED, which still need repeated-retry coverage.
+The original validation recorded **10 passing Linux cases and four known upstream
+skips**, using x86-64 Linux with eBPF disabled. Six later edge cases covered a zero
+probe timeout, repeated USED retries, pending address/configuration removal and
+link lifecycle. Two separate real DHCP transactions covered ordinary acquisition
+and duplicate-address decline followed by a replacement lease. These are separate
+runs, not one complete suite or reproduction of the original field event.
 
-The validation recorded **10 passing Linux cases and four known upstream skips**,
-using x86-64 Linux with eBPF disabled. It did not validate the robot's ARM platform,
-its kernel/driver path, complete DHCP decline/new-lease behavior, all address/link
-lifecycle paths or the original event's trigger. The candidate patch **has not
-been installed on the robot**. The lasting repair needs review and validation in
+The retained-address recovery fixture used ONCE defense and an externally retained
+address. A separate live-duplicate link-reset check accepted the duplicate on both
+unmodified and candidate source: another retained-address shortcut remains outside
+the patch. This is an unresolved protection gap, not a passing recovery test.
+The robot's ARM platform, kernel/driver path, eBPF, full lease renewal/expiry and
+the original conflict trigger remain unverified. The candidate patch **has not
+been installed on the robot** and is not ready for production. The lasting repair needs review and validation in
 the robot's networking package or OS image; changing the browser page does not
 repair NetworkManager. The patch and reproduction artifacts are not part of this
 controller's source download or MIT license grant.
+
+A later connection attempt used an old address that no longer answered; a freshly
+verified new address restored access while both native and workaround routes
+remained present. That was an address change, not evidence of another missing
+route. A short capture spanning a guarded yaw pilot and separate Stop/Sleep
+observation windows recorded healthy daemon reads and no new conflict. It does
+not establish why the earlier conflict happened or guarantee prevention.
 
 ### Maintenance and support
 

@@ -128,6 +128,12 @@ h1,h2,h3,p,li,summary { overflow-wrap: break-word; } .control-section>button,.co
 .controller-options>details { min-width:0; margin:0; padding:8px 10px; border:1px solid #d1d5cc; border-radius:5px; background:#fff; font-size:.9em; }
 .controller-options>details[open] { grid-column:1/-1; }
 .controller-options .webxr-controls { margin-top:10px; }
+.diagnostic-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:10px 20px; margin:14px 0; }
+.diagnostic-facts div { min-width:0; }
+.diagnostic-facts dt { font-weight:600; }
+.diagnostic-facts dd { margin:2px 0 0; overflow-wrap:anywhere; }
+.diagnostic-report { display:block; }
+.diagnostic-report-text { display:block; width:100%; margin-top:6px; font:13px/1.5 monospace; }
 .controller-page .connection-guide { margin:12px 0 0; padding:8px 0; font-size:.9em; }
 .workspace-note { font-size:.85em; margin:8px 0; }
 .controller-page footer { font-size:.85em; }
