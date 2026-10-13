@@ -164,6 +164,13 @@ h1,h2,h3,p,li,summary { overflow-wrap: break-word; } .control-section>button,.co
 .controller-page .operator-head .spatial-translation { margin-top:8px; }
 .controller-page .operator-head .spatial-position-pad { height:100px; }
 .camera-aim-help { font-size:12px; margin:6px 0; }
+.phone-modes { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
+.phone-modes button[aria-pressed=true] { border-color:#285440; background:#e5ece5; }
+.controller-page .phone-hold { width:100%; min-height:70px; touch-action:none; user-select:none; margin:10px 0; }
+.phone-hold[aria-pressed=true] { background:#285440; color:#fff; }
+.phone-code { display:block; width:100%; margin:6px 0 10px; font:12px/1.5 monospace; overflow-wrap:anywhere; }
+.phone-preview { font-variant-numeric:tabular-nums; }
+.phone-controller { max-width:760px; }
 .controller-page.large .controller-workspace { grid-template-columns:minmax(0,1fr); }
 @media(max-width:1000px) { .controller-page .controller-workspace { grid-template-columns:minmax(0,1.5fr) minmax(180px,.7fr); } }
 @media(max-width:700px) { .controller-page .controller-workspace { grid-template-columns:minmax(0,1fr); } .controller-page .controller-workspace .model-stage { height:130px; } .model-antenna-slider { font-size:14px; } .model-antenna-slider input[type=range] { min-height:32px; } }

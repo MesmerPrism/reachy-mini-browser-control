@@ -4,6 +4,7 @@ import WirelessPanel from './WirelessPanel.jsx';
 import FitText from './FitText.jsx';
 import FirstSetup, { ExistingRobotGuide } from './FirstSetup.jsx';
 import RecoveryGuide from './RecoveryGuide.jsx';
+import PhoneController from './PhoneController.jsx';
 import './style.css';
 import { version } from '../package.json';
 
@@ -11,7 +12,7 @@ const sourceArchive = `./downloads/reachy-mini-controller-v${version}.zip`;
 
 function currentView() {
   const hash = window.location.hash.slice(1);
-  return ['setup', 'connect', 'demo', 'recover', 'use', 'source', 'local'].includes(hash) ? hash : 'home';
+  return ['setup', 'connect', 'demo', 'phone', 'recover', 'use', 'source', 'local'].includes(hash) ? hash : 'home';
 }
 function Page() {
   const [size, setSize] = useState('normal');
@@ -22,7 +23,7 @@ function Page() {
     window.addEventListener('hashchange', navigate);
     return () => window.removeEventListener('hashchange', navigate);
   }, []);
-  return <div className={`page ${size} ${['connect', 'demo'].includes(view) ? 'controller-page' : ''}`}>
+  return <div className={`page ${size} ${['connect', 'demo', 'phone'].includes(view) ? 'controller-page' : ''}`}>
     <header><a href="#home"><FitText>Reachy Mini</FitText></a><nav aria-label="Page sections">{[['connect', 'Controls'], ['demo', 'Demo'], ['setup', 'Wi-Fi setup'], ['recover', 'Reconnect'], ['use', 'Help'], ['source', 'Source']].map(([id, label]) => <a key={id} href={`#${id}`} aria-current={view === id ? 'page' : undefined}><FitText>{label}</FitText></a>)}</nav></header>
     <main ref={main} tabIndex={-1}><div className="page-heading"><h1>{view === 'home' ? 'Reachy Mini in your browser' : 'Reachy Mini'}</h1>
       <details className="text-options"><summary>Text display</summary><label htmlFor="text-size">Display size and spacing</label><select id="text-size" value={size} onChange={event => setSize(event.target.value)}><option value="normal">Normal</option><option value="large">200% text</option><option value="spaced">Increased text spacing</option></select></details></div>
@@ -30,10 +31,11 @@ function Page() {
         <p className="intro">Move the head and antennas, see Reachy’s measured pose, watch its camera and talk through its speaker.</p>
         <div className="start-options"><div><h2>Reachy is already on Wi-Fi</h2><p>Check the current robot, connect your account and open the controls. No network reset or setup wizard is needed.</p><a className="download primary" href="#connect">Connect to Reachy</a></div><div><h2>Reachy needs Wi-Fi</h2><p>Use guided connection checks to find a supported setup route for your Wireless Mini.</p><a className="download" href="#setup">Configure Wi-Fi</a></div></div>
         <p>Browser control currently supports Wireless daemon 1.10.0. Network setup can use other versions’ own browser pages. For Lite over USB, use the <a href="#local">local controller</a>.</p>
-        <p>No robot yet? <a href="#demo">Try the simulated Reachy</a>. Move its head and see how the camera view changes in a 360° room.</p>
+        <p>No robot yet? <a href="#demo">Try the simulated Reachy</a>. Move its head and see how the camera view changes in a 360° room. Demo also supports phone turn, nod and tilt, directly or paired to a PC.</p>
       </section>
       <section id="connect" hidden={view !== 'connect'}>{view === 'connect' && <><WirelessPanel /><ExistingRobotGuide /><p className="workspace-note">Need a network first? <a href="#setup">Configure Wi-Fi</a>. Leaving this view disconnects the control session.</p></>}</section>
       <section id="demo" hidden={view !== 'demo'}>{view === 'demo' && <WirelessPanel initialDemo />}</section>
+      <section id="phone" hidden={view !== 'phone'}>{view === 'phone' && <PhoneController />}</section>
       <section id="recover" hidden={view !== 'recover'}>{view === 'recover' && <RecoveryGuide />}</section>
       <section id="setup" hidden={view !== 'setup'}><h2>Set up your robot</h2>
         <p>Keep this tab on Setup while provisioning. Leaving setup disconnects Bluetooth and clears credentials; a network request already submitted to Reachy may still finish there.</p>
@@ -60,7 +62,7 @@ function Page() {
       <section id="source" hidden={view !== 'source'}><h2>Source, license & credits</h2><p>Original controller code and schematic geometry © 2026 MesmerPrism, released under the <a href="./source/LICENSE">MIT license</a>. View the <a href="https://github.com/MesmerPrism/reachy-mini-browser-control">complete source</a> and <a href="./source/THIRD_PARTY_NOTICES.md">third-party notices</a>.</p>
         <p>Reachy Mini, its daemon, JavaScript SDK and CAD are by <a href="https://github.com/pollen-robotics/reachy_mini">Pollen Robotics</a>. Software and SDK: Apache-2.0. Hardware README: Creative Commons BY-SA-NC, with no version stated; CAD is not included in this public bundle. Head tracking uses <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker">Google MediaPipe</a> and Apache-2.0 face models. Rendering uses Three.js, React and Lucide; text measurement uses Cheng Lou’s <a href="https://github.com/chenglou/pretext">Pretext</a>. Newsreader typeface: Production Type, <a href="./source/licenses/Newsreader-OFL.txt">SIL Open Font License</a>. Design guidance: <a href="https://github.com/GeorgeFejer91/uncodixfy-pretext">Uncodixfy Pretext</a>.</p>
         <p>This is an independent community controller. It is not an official Pollen Robotics product. There is no analytics, recording or automatic microphone/camera capture. Authentication and signaling contact Hugging Face/Pollen; WebRTC may contact the SDK’s STUN service to establish a peer connection.</p>
-        <p>The simulated camera uses an AI-generated panorama distributed with the MIT-licensed demo. See its <a href="./source/public-site/DEMO_ASSETS.md">provenance and limitations</a>. Optional <a href="./source/docs/SETUP.md#agent-diagnostics-cli">agent diagnostics</a> provide read-only JSON reports without changing robot settings.</p>
+        <p>The simulated camera uses an AI-generated panorama distributed with the MIT-licensed demo. See its <a href="./source/public-site/DEMO_ASSETS.md">provenance and limitations</a>. <a href="./source/docs/PHONE_CONTROL.md">Phone motion and pairing</a> are simulation-only. Optional <a href="./source/docs/SETUP.md#agent-diagnostics-cli">agent diagnostics</a> provide read-only JSON reports without changing robot settings.</p>
       </section>
     </main><footer><a href="https://mesmerprism.com/">Mesmer Prism</a> · <a href="./source/README.md">Documentation</a> · <a href="https://github.com/MesmerPrism/reachy-mini-browser-control/issues">Report a problem</a></footer>
   </div>;
