@@ -9,9 +9,11 @@ import { execFileSync } from 'node:child_process';
 // Adding a new runtime/setup file requires a fresh source and privacy review.
 export const PUBLIC_FILES = Object.freeze([
   '.gitignore', '.gitattributes', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'AGENTS.md', 'CONTRIBUTING.md',
-  '.github/workflows/checks.yml', 'docs/ARCHITECTURE.md', 'docs/STATUS.md', 'docs/DAEMON_1_11_COMPATIBILITY.md',
+  '.github/workflows/checks.yml', 'docs/ARCHITECTURE.md', 'docs/STATUS.md', 'docs/RECOVERY.md', 'docs/DAEMON_1_11_COMPATIBILITY.md',
   'src/AgentConsole.jsx', 'src/agent-console.mjs', 'src/agent-console.css', 'test/agent-console.test.mjs',
   'src/command-flight.mjs', 'test/command-flight.test.mjs',
+  'src/browser-bluetooth.mjs', 'public-site/RecoveryGuide.jsx', 'test/browser-bluetooth.test.mjs',
+  'test/fixtures/recovery-qa.html', 'test/fixtures/recovery-qa.jsx',
   'src/model-antenna-control.mjs', 'test/model-antenna-control.test.mjs',
   'server/security-headers.mjs', 'test/security-headers.test.mjs',
   'src/SpatialControls.jsx', 'src/spatial-control.mjs', 'src/spatial-controls.css', 'test/spatial-control.test.mjs',

@@ -3,6 +3,7 @@ import { createFirstSetupClient, cryptoPreflight, FirstSetupError, SETUP_CHECKS 
 import { parseDaemonStatus, daemonGuidance, robotBrowserLinks, reportedRobotHost } from '../src/setup-guidance.mjs';
 import WifiSetup from './WifiSetup.jsx';
 import RobotUpdate from './RobotUpdate.jsx';
+import { BLUETOOTH_BROWSER_HELP } from '../src/browser-bluetooth.mjs';
 
 const steps = ['Choose a route', 'Check compatibility', 'Connect Wi-Fi', 'Browser control'];
 const outcomes = { checking: 'Checking…', passed: 'Passed', unsupported: 'Not supported', inconclusive: 'Inconclusive', skipped: 'Not run' };
@@ -101,7 +102,7 @@ export default function FirstSetup({ createClient = createFirstSetupClient, brow
     async function check() {
       if (!browserSupported()) {
         setCapability('unsupported');
-        setMessage('Bluetooth setup needs a browser with Web Bluetooth, such as desktop Chrome or Edge, or Chrome on Android. Open this page there; no helper download is needed.');
+        setMessage(`Bluetooth setup needs a browser with Web Bluetooth. ${BLUETOOTH_BROWSER_HELP} Open this page directly there; no helper download is needed.`);
         return;
       }
       try {

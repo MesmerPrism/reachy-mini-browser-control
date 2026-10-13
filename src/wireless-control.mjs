@@ -6,6 +6,7 @@ const RAD = Math.PI / 180;
 const deg = value => value / RAD;
 const rad = value => value * RAD;
 const axes = ['yaw', 'pitch', 'roll', 'x', 'y', 'z'];
+const headLimits = { yaw: 20, pitch: 15, roll: 15, x: 10, y: 10, z: 10 };
 // v1.10's bundled emotion library names. Playback is sent through the pinned
 // SDK's documented `sendRaw` escape hatch because SDK 1.8 has no typed catalog
 // or recorded-move helper. It remains queued-only.
@@ -16,6 +17,13 @@ export const WIRELESS_EMOTES = Object.freeze(['amazed1','anxiety1','attentive1',
 function finite(value, name) {
   if (!Number.isFinite(value)) throw Error(`${name} must be finite`);
   return value;
+}
+
+function withinLimit(value, limit, omitted) {
+  // Matrix/angle conversion can put measured boundary values a few rounding
+  // steps beyond the limit. Preserve that omitted measurement without widening
+  // explicitly requested targets or admitting material measured overshoot.
+  return Number.isFinite(value) && Math.abs(value) - limit <= (omitted ? 8 * Number.EPSILON * limit : 0);
 }
 
 function poseParts(matrix) {
@@ -175,7 +183,7 @@ export class WirelessControl {
     const goal = { ...source };
     for (const axis of axes) if (pose?.[axis] !== undefined) goal[axis] = finite(pose[axis], axis);
     if (Object.keys(pose ?? {}).length === 0 || Object.keys(pose).some(axis => !axes.includes(axis))) throw Error('Choose valid head axes');
-    if (Math.abs(goal.yaw) > 20 || Math.abs(goal.pitch) > 15 || Math.abs(goal.roll) > 15 || ['x', 'y', 'z'].some(axis => Math.abs(goal[axis]) > 10)) throw Error('Head target exceeds Wireless limits');
+    if (axes.some(axis => !withinLimit(goal[axis], headLimits[axis], pose?.[axis] === undefined))) throw Error('Head target exceeds Wireless limits');
     const base = this.lastSent?.head ?? source; const elapsed = Math.max(0, Math.min(.05, (this.now() - (this.lastSent?.at ?? this.now())) / 1000));
     const next = step(base, goal, elapsed, speed); const sent = this.sdk.setTarget({ head: poseMatrix(next), body_yaw: measured.bodyYawRad });
     if (sent === true) this.lastSent = { ...this.lastSent, head: next, at: this.now(), epoch: this.epoch }; return this.#queued(sent, 'head-manual');
@@ -184,7 +192,7 @@ export class WirelessControl {
   #antennas(targets) {
     const measured = this.#freshAwake(); if (!targets || Object.keys(targets).some(axis => axis !== 'left' && axis !== 'right')) throw Error('Choose valid antenna axes');
     const goal = { ...measured.antennas }; for (const side of ['left', 'right']) if (targets[side] !== undefined) goal[side] = finite(targets[side], side);
-    if (Object.keys(targets).length === 0 || Math.max(Math.abs(goal.left), Math.abs(goal.right)) > 90) throw Error('Antenna target exceeds 90 degrees');
+    if (Object.keys(targets).length === 0 || ['left', 'right'].some(side => !withinLimit(goal[side], 90, targets[side] === undefined))) throw Error('Antenna target exceeds 90 degrees');
     const base = this.lastSent?.antennas ?? measured.antennas; const elapsed = Math.max(0, Math.min(.05, (this.now() - (this.lastSent?.at ?? this.now())) / 1000));
     const distance = Math.hypot(goal.left - base.left, goal.right - base.right); const scale = distance ? Math.min(1, 120 * elapsed / distance) : 1;
     const next = { left: base.left + (goal.left - base.left) * scale, right: base.right + (goal.right - base.right) * scale };

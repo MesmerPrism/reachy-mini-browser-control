@@ -68,6 +68,26 @@ test('slow optional media request is coalesced and does not age mandatory snapsh
   const control=new RobotControl(adapter);await control.status();const status=await control.status();assert.equal(status.ready,true);assert.equal(mediaReads,1);
   assert.ok(status.diagnostics.snapshot.readMs<100);assert.equal(control.epoch,0);
 });
+
+test('robot timestamp and native joint evidence survive independently of local HTTP freshness',async()=>{
+  const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'});
+  const native={timestamp:'2000-01-01T00:00:00+00:00',head_joints:[.1,-.2,.3,-.4,.5,-.6],control_mode:'enabled'};
+  adapter.request=async route=>{
+    if(route==='/api/media/status')return {available:false};
+    const response=criticalResponse(route);
+    return route.startsWith('/api/state/full') ? {...response,...native} : response;
+  };
+  const control=new RobotControl(adapter);let state=await control.status(),evidence=state.diagnostics.robotState;
+  assert.equal(state.ready,true);assert.equal(evidence.timestamp,native.timestamp);assert.equal(evidence.controlMode,'enabled');
+  assert.deepEqual(evidence.headJoints,native.head_joints);
+  const read=state.diagnostics.snapshot.requests.find(request=>request.route.startsWith('/api/state/full'));
+  assert.equal(evidence.readStartedAt,read.startedAt);assert.equal(evidence.readCompletedAt,read.completedAt);
+  evidence.headJoints[0]=99;assert.equal(adapter.stateDiagnostics.headJoints[0],.1);assert.equal(native.head_joints[0],.1);
+  state=await control.status();assert.equal(state.ready,true);assert.equal(state.diagnostics.robotState.timestamp,native.timestamp,'repeated daemon timestamp remains evidence, not a claim of sensor freshness');
+  native.timestamp=null;native.head_joints=[NaN];native.control_mode=null;
+  state=await control.status();assert.equal(state.ready,true);
+  assert.equal(state.diagnostics.robotState.timestamp,null);assert.equal(state.diagnostics.robotState.headJoints,null);assert.equal(state.diagnostics.robotState.controlMode,null);
+});
 test('exhausted read recovery remains bounded across later browser polls until explicit Stop',async()=>{
   const {control,adapter}=fixture(),snapshot=adapter.snapshot.bind(adapter);let reads=0;
   adapter.snapshot=async()=>{if(++reads>1)throw Error('persistent offline');return snapshot();};
@@ -82,6 +102,56 @@ test('an over-age initial snapshot reports stale readiness without claiming disc
   adapter.snapshot=async()=>{await sleep(550);return snapshot();};
   await assert.rejects(move(control),/freshness limit/);assert.equal(writes.length,0);assert.equal(control.connected,true);
   assert.ok(control.snapshotDiagnostics.readMs>=500);assert.equal(control.stopPending,false);
+});
+
+test('completed optional media reads are rate-limited independently of mandatory freshness',async()=>{
+  const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'});let mediaReads=0,mandatoryReads=0;
+  adapter.request=async route=>{if(route==='/api/media/status'){mediaReads++;return {available:true,released:false,no_media:false};}mandatoryReads++;return criticalResponse(route);};
+  const control=new RobotControl(adapter);
+  for(let i=0;i<8;i++)assert.equal((await control.status()).ready,true);
+  assert.equal(mediaReads,1,'frequent motion/status readers do not flood the optional media endpoint');
+  assert.equal(mandatoryReads,40,'every completed control snapshot still reads its required live endpoints');
+  adapter.mediaDiagnostics.at=Date.now()-1600;
+  await control.status();assert.equal(mediaReads,2,'an expired optional read is refreshed');
+});
+
+test('failed snapshot batches drain outstanding reads before a new coalesced read can start',async t=>{
+  const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'});let release,finished=false,stateReads=0;
+  adapter.request=async route=>{if(route==='/api/media/status')return {available:false};if(route==='/api/daemon/status')throw Error('daemon offline');if(route.startsWith('/api/state/full')){stateReads++;await new Promise(resolve=>release=resolve);}return criticalResponse(route);};
+  t.after(()=>release?.());
+  const control=new RobotControl(adapter);
+  const first=control.status().then(result=>{finished=true;return result;});
+  await sleep(15);assert.equal(finished,false,'one failed endpoint cannot leave the rest of its batch running invisibly');
+  const second=control.status();await sleep(5);assert.equal(stateReads,1,'joining callers share the draining batch');
+  release();const [a,b]=await Promise.all([first,second]);
+  assert.equal(a.connected,false);assert.equal(b.connected,false);assert.equal(control.snapshotRead,null);
+  assert.equal(a.diagnostics.snapshot.requests.length,5);
+  assert.match(a.diagnostics.snapshot.requests.find(item=>item.route==='/api/daemon/status').error,/daemon offline/);
+});
+
+test('slow JSON body reads stay behind the freshness gate and retain endpoint timing after recovery',async t=>{
+  let slow=true;
+  t.mock.method(globalThis,'fetch',async url=>{
+    const route=new URL(url).pathname+new URL(url).search;
+    return {ok:true,status:200,json:async()=>{if(route.startsWith('/api/state/full')&&slow)await sleep(550);return route==='/api/media/status'?{available:false}:criticalResponse(route);}};
+  });
+  const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'}),control=new RobotControl(adapter);
+  const old=await control.status();assert.equal(old.connected,true);assert.equal(old.ready,false);assert.match(old.blockedReason,/freshness limit/);
+  const timing=old.diagnostics.snapshot.requests.find(item=>item.route.startsWith('/api/state/full'));
+  assert.ok(timing.bodyMs>=500);assert.ok(timing.readMs>=500);assert.ok(timing.headerMs<100);
+  assert.equal(old.diagnostics.lastSlowSnapshot.readMs,old.diagnostics.snapshot.readMs);
+  slow=false;const healthy=await control.status();assert.equal(healthy.ready,true);
+  assert.ok(healthy.diagnostics.lastSlowSnapshot.requests.find(item=>item.route.startsWith('/api/state/full')).bodyMs>=500,'a subsequent healthy poll retains the fault-time receipt');
+});
+
+test('failed motion POST retains full response timing, latches uncertainty and is never retried',async t=>{
+  let posts=0;
+  t.mock.method(globalThis,'fetch',async()=>{posts++;return {ok:true,status:200,json:async()=>{await sleep(15);throw Error('response body lost');}};});
+  const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'});
+  await assert.rejects(adapter.setAntennas([0,0]),/response body lost/);
+  assert.equal(posts,1);assert.match(adapter.uncertain,/unknown/);
+  assert.ok(adapter.lastRequestTiming.bodyMs>=10);assert.equal(adapter.lastRequestTiming.status,200);
+  assert.match(adapter.lastRequestTiming.error,/response body lost/);
 });
 test('worker-origin settling fault schedules recovery only after its writer reference clears',async()=>{
   const {control,adapter,writes}=fixture();adapter.setHead=async(pose,body)=>{writes.push({pose,body});};

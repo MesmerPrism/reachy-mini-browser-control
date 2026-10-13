@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import WirelessPanel from './WirelessPanel.jsx';
 import FitText from './FitText.jsx';
 import FirstSetup, { ExistingRobotGuide } from './FirstSetup.jsx';
+import RecoveryGuide from './RecoveryGuide.jsx';
 import './style.css';
 import { version } from '../package.json';
 
@@ -10,7 +11,7 @@ const sourceArchive = `./downloads/reachy-mini-controller-v${version}.zip`;
 
 function currentView() {
   const hash = window.location.hash.slice(1);
-  return ['setup', 'connect', 'demo', 'use', 'source', 'local'].includes(hash) ? hash : 'home';
+  return ['setup', 'connect', 'demo', 'recover', 'use', 'source', 'local'].includes(hash) ? hash : 'home';
 }
 function Page() {
   const [size, setSize] = useState('normal');
@@ -22,7 +23,7 @@ function Page() {
     return () => window.removeEventListener('hashchange', navigate);
   }, []);
   return <div className={`page ${size} ${['connect', 'demo'].includes(view) ? 'controller-page' : ''}`}>
-    <header><a href="#home"><FitText>Reachy Mini</FitText></a><nav aria-label="Page sections">{[['connect', 'Controls'], ['demo', 'Demo'], ['setup', 'Wi-Fi setup'], ['use', 'Help'], ['source', 'Source']].map(([id, label]) => <a key={id} href={`#${id}`} aria-current={view === id ? 'page' : undefined}><FitText>{label}</FitText></a>)}</nav></header>
+    <header><a href="#home"><FitText>Reachy Mini</FitText></a><nav aria-label="Page sections">{[['connect', 'Controls'], ['demo', 'Demo'], ['setup', 'Wi-Fi setup'], ['recover', 'Reconnect'], ['use', 'Help'], ['source', 'Source']].map(([id, label]) => <a key={id} href={`#${id}`} aria-current={view === id ? 'page' : undefined}><FitText>{label}</FitText></a>)}</nav></header>
     <main ref={main} tabIndex={-1}><div className="page-heading"><h1>{view === 'home' ? 'Reachy Mini in your browser' : 'Reachy Mini'}</h1>
       <details className="text-options"><summary>Text display</summary><label htmlFor="text-size">Display size and spacing</label><select id="text-size" value={size} onChange={event => setSize(event.target.value)}><option value="normal">Normal</option><option value="large">200% text</option><option value="spaced">Increased text spacing</option></select></details></div>
       <section id="home" hidden={view !== 'home'}>
@@ -33,6 +34,7 @@ function Page() {
       </section>
       <section id="connect" hidden={view !== 'connect'}>{view === 'connect' && <><WirelessPanel /><ExistingRobotGuide /><p className="workspace-note">Need a network first? <a href="#setup">Configure Wi-Fi</a>. Leaving this view disconnects the control session.</p></>}</section>
       <section id="demo" hidden={view !== 'demo'}>{view === 'demo' && <WirelessPanel initialDemo />}</section>
+      <section id="recover" hidden={view !== 'recover'}>{view === 'recover' && <RecoveryGuide />}</section>
       <section id="setup" hidden={view !== 'setup'}><h2>Set up your robot</h2>
         <p>Keep this tab on Setup while provisioning. Leaving setup disconnects Bluetooth and clears credentials; a network request already submitted to Reachy may still finish there.</p>
         <p>Exploring without hardware? <a href="#demo">Try the simulated robot and camera</a>.</p>

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WirelessControl } from '../src/wireless-control.mjs';
+import { absoluteHeadPose, headAngles } from '../server/head-pose.mjs';
 
 class FakeSdk extends EventTarget {
   static instances = [];
@@ -44,6 +45,61 @@ test('manual six-axis target is bounded, smoothed, and explicitly queued-only', 
   const head = control.sdk.sent.at(-1)[1].head; assert.ok(head[3] > 0 && head[3] < .01); assert.ok(head[11] > 0 && head[11] < .01);
   await assert.rejects(control.command(target(control, { action: 'head-manual', pose: { yaw: 21 } })), /exceeds/);
   await assert.rejects(control.command(target(control, { action: 'head-manual', speed: 31, pose: { yaw: 1 } })), /5 to 30/);
+});
+
+test('partial head targets preserve boundary-roundoff measurements while explicit limits stay strict', async () => {
+  const limits = { yaw: 20, pitch: 15, roll: 15, x: 10, y: 10, z: 10 };
+  for (const [axis, limit] of Object.entries(limits)) for (const sign of [-1, 1]) {
+    const control = new WirelessControl({ ReachyMini: FakeSdk }); await control.connect();
+    const held = sign * (limit + 4 * Number.EPSILON * limit);
+    const input = { yaw: 0, pitch: 0, roll: 0, x: 0, y: 0, z: 0, [axis]: held };
+    const pose = absoluteHeadPose(matrix, input.yaw, input.pitch, input.roll, input);
+    control.sdk.push({ head: pose, antennas: [0, 0], body_yaw: .23, motor_mode: 'enabled', is_move_running: false });
+    const before = control.snapshot().measured.head;
+    assert.ok(Math.abs(before[axis]) > limit, `${axis}: fixture crosses the boundary through roundoff`);
+    const result = await control.command(target(control, { action: 'head-manual', pose: axis === 'yaw' ? { pitch: 1 } : { yaw: 1 } }));
+    assert.equal(result.queued, true);
+    assert.deepEqual(control.snapshot().measured.head, before, 'the measured snapshot is never clamped');
+    const sent = control.sdk.sent.at(-1)[1];
+    const decoded = { ...headAngles(sent.head), x: sent.head[3] * 1000, y: sent.head[7] * 1000, z: sent.head[11] * 1000 };
+    assert.ok(Math.abs(decoded[axis] - held) < 1e-11, `${axis}: omitted measured axis is preserved`);
+    assert.equal(sent.body_yaw, .23);
+    const count = control.sdk.sent.length;
+    await assert.rejects(control.command(target(control, { action: 'head-manual', pose: { [axis]: held } })), /exceeds/);
+    assert.equal(control.sdk.sent.length, count, 'explicit overshoot cannot queue a frame');
+    await control.close();
+  }
+});
+
+test('materially out-of-range measured head axes still block partial targets without a write', async () => {
+  for (const [axis, limit] of Object.entries({ yaw: 20, pitch: 15, roll: 15, x: 10, y: 10, z: 10 })) for (const sign of [-1, 1]) {
+    const control = new WirelessControl({ ReachyMini: FakeSdk }); await control.connect();
+    const held = { yaw: 0, pitch: 0, roll: 0, x: 0, y: 0, z: 0, [axis]: sign * (limit + 1e-8) };
+    control.sdk.push({ head: absoluteHeadPose(matrix, held.yaw, held.pitch, held.roll, held), antennas: [0, 0], body_yaw: 0, motor_mode: 'enabled', is_move_running: false });
+    await assert.rejects(control.command(target(control, { action: 'head-manual', pose: axis === 'yaw' ? { pitch: 1 } : { yaw: 1 } })), /exceeds/);
+    assert.equal(control.sdk.sent.length, 0);
+    await control.close();
+  }
+});
+
+test('antenna boundary roundoff preserves the omitted side but never admits explicit or material overshoot', async () => {
+  for (const side of ['left', 'right']) for (const sign of [-1, 1]) {
+    const control = new WirelessControl({ ReachyMini: FakeSdk }); await control.connect();
+    const held = sign * (90 + 4 * Number.EPSILON * 90);
+    const antennas = side === 'right' ? [held * Math.PI / 180, 0] : [0, held * Math.PI / 180];
+    const push = () => control.sdk.push({ head: matrix, antennas, body_yaw: 0, motor_mode: 'enabled', is_move_running: false });
+    push(); const before = control.snapshot().measured.antennas;
+    assert.ok(Math.abs(before[side]) > 90);
+    await control.command(target(control, { action: 'antennas', targets: { [side === 'left' ? 'right' : 'left']: 1 } }));
+    assert.deepEqual(control.snapshot().measured.antennas, before);
+    assert.ok(Math.abs(control.sdk.sent.at(-1)[1].antennas[side === 'right' ? 0 : 1] - antennas[side === 'right' ? 0 : 1]) < 1e-14);
+    const count = control.sdk.sent.length;
+    await assert.rejects(control.command(target(control, { action: 'antennas', targets: { [side]: held } })), /exceeds/);
+    antennas[side === 'right' ? 0 : 1] = sign * (90 + 1e-8) * Math.PI / 180; push();
+    await assert.rejects(control.command(target(control, { action: 'antennas', targets: { [side === 'left' ? 'right' : 'left']: 1 } })), /exceeds/);
+    assert.equal(control.sdk.sent.length, count);
+    await control.close();
+  }
 });
 
 test('requires a fresh awake state and does not issue targets while a move is reported', async () => {
