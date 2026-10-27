@@ -1,0 +1,13 @@
+matrix_version,case_id,axis,unit,excursion_target,neutral_target,standard_duration_s,slow_duration_s,observation_window_s,historical_basis,selection_note
+1,yaw-negative,yaw,deg,-30,0,6,10,10,observed about -66 deg at full negative yaw,about half range symmetric with positive case
+1,yaw-positive,yaw,deg,30,0,6,10,10,observed about +58 deg at full positive yaw,about half range symmetric with negative case
+1,pitch-negative,pitch,deg,-18,0,6,10,10,observed -36.95 deg at -40 deg request,rounded below half measured travel
+1,pitch-positive,pitch,deg,18,0,6,10,10,observed +36.32 deg at +40 deg request,rounded below half measured travel
+1,roll-negative,roll,deg,-20,0,6,10,10,observed -40.83 deg at -40 deg request,about half measured travel
+1,roll-positive,roll,deg,20,0,6,10,10,observed +40.67 deg at +40 deg request,about half measured travel
+1,x-negative,x,mm,-11,0,10,15,10,observed -23.28 mm at -44.75 mm request,use measured endpoint rather than requested model edge
+1,x-positive,x,mm,10,0,10,15,10,earlier +20 mm trial reported without concern,half of earlier inner trial excludes pressure-limited outer request
+1,y-negative,y,mm,-22,0,10,15,10,observed -45.93 mm at -46 mm request,rounded below half measured travel
+1,y-positive,y,mm,22,0,10,15,10,observed +46.17 mm at +46 mm request,rounded below half measured travel
+1,z-negative,z,mm,-24,0,10,15,10,observed -49.12 mm at -50 mm request,rounded below half measured travel
+1,z-positive,z,mm,10,0,10,15,10,observed +21.61 mm at +22.25 mm request,rounded below half measured travel

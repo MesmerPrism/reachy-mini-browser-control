@@ -120,3 +120,26 @@ test('missing snapshots remain unknown and all public scalars reject unbounded o
   assert.equal(JSON.stringify(summary).includes('private'), false);
   assert.deepEqual(snapshot, before);
 });
+
+test('acknowledged and converged targets do not imply computed goals, serial success or motor acceptance', () => {
+  const snapshot = { connected: true, ready: true, awake: true, motorMode: 'enabled', moves: [],
+    headAngles: { yaw: 6, pitch: 0, roll: 0 }, headPositionMm: { x: 0, y: 0, z: 0 },
+    antennas: { left: 0, right: 0 }, bodyYaw: 0,
+    diagnostics: { snapshot: { startedAt: 1000 }, robotState: { timestampMeaning: 'response-created', headJoints: [0, 0, 0, 0, 0, 0, 0] },
+      headManual: { goalAcknowledged: true, postWriteRead: true, withinTolerance: true },
+      lastManualHeadWrite: { outcome: 'acknowledged' }, serialWriteOutcome: 'succeeded', motorGoalAcceptance: true } };
+  const before = structuredClone(snapshot);
+  const summary = controllerDiagnostics(snapshot, { transport: 'local-bridge', now: 1100 });
+  assert.equal(summary.telemetry.valid, true);
+  assert.equal(summary.telemetry.fresh, true);
+  assert.deepEqual(summary.motionEvidence, { headPoseSource: 'joint-forward-kinematics', poseJointSampleCorrelation: 'unknown',
+    daemonComputedJointTargets: 'unavailable', serialWriteOutcome: 'unknown', motorGoalAcceptance: 'unknown' });
+  assert.deepEqual(snapshot, before);
+  snapshot.diagnostics.robotState.timestampMeaning = 'unverified';
+  assert.equal(controllerDiagnostics(snapshot, { transport: 'local-bridge', now: 1100 }).motionEvidence.headPoseSource, 'unknown');
+  assert.equal(controllerDiagnostics(wireless(), { now: 1100 }).motionEvidence.motorGoalAcceptance, 'unknown');
+  const demo = controllerDiagnostics(snapshot, { transport: 'simulation', now: 1100 });
+  assert.equal(demo.motionEvidence.headPoseSource, 'simulated');
+  assert.equal(demo.motionEvidence.motorGoalAcceptance, 'not-applicable');
+  assert.equal(controllerDiagnostics({}, { now: 1100 }).motionEvidence.headPoseSource, 'unknown');
+});

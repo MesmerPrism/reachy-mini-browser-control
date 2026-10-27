@@ -139,7 +139,74 @@ route. A short capture spanning a guarded yaw pilot and separate Stop/Sleep
 observation windows recorded healthy daemon reads and no new conflict. It does
 not establish why the earlier conflict happened or guarantee prevention.
 
+### October 15 bounded network follow-up
+
+Two finite 180-second observation windows bracketed isolated ARM software fixtures
+while the installed real daemon remained unchanged and its motors stayed disabled.
+Each window completed 36 identity-matched PC status GETs and 36 robot-loopback
+GETs without failure. Captured address events were IPv6 lifetime refreshes; no
+IPv4 route-loss event or new conflict appeared in the selected logs. Initial and
+final boot identity matched, and direct routing to the PC used the explicit
+workaround. Subsequent raw-table review corrected the initial route counter:
+it counted a local-table broadcast record as a native subnet route. The reviewed
+initial/final main tables have the static workaround, with no native unicast
+subnet route. Raw receipts are retained alongside the correction.
+
+The first window nevertheless included a 1.109-second PC read while loopback
+reads remained short; the second PC maximum was 281 ms. These sampled availability
+results do not qualify the controller's 500 ms freshness gate or diagnose the
+latency outlier. No network settings, log levels, services or robot motion were
+changed. Both finite observers exited and their evidence was retained privately;
+scheduled polling was not re-enabled.
+
+This did not reproduce the earlier fault, capture its ARP trigger, test a fresh
+duplicate-address event or establish Wake/Sleep/reboot causality. Controlled
+transition captures, narrow packet evidence and isolated duplicate/link/DHCP
+renewal-expiry tests remain useful separate investigations. The stock networking
+package and network-specific workaround are unchanged; the candidate repair
+remains uninstalled.
+
+A later disabled-only maintenance test added a finite 180-second OS capture and
+36 successful PC TCP checks of the SSH port. Normal daemon HTTP was intentionally
+unavailable while that service was stopped; this is not network disappearance.
+The capture retained the workaround and observed only IPv6 lifetime refreshes.
+It ended before normal startup completed; separate fresh checks subsequently
+confirmed the restored daemon's identity, ready/disabled state and route table.
+The native subnet route remained absent in these snapshots. This supports the
+workaround's usefulness, without identifying when or why the native route was
+lost. Scheduled polling remains off and no network settings were changed.
+
 ### Maintenance and support
+
+An October 16 disabled P-gain maintenance cycle and later original-gain Wake/Sleep
+observation completed with targeted logging. All 191 PC TCP checks succeeded;
+54 HTTP failures were confined to the intentionally stopped daemon interval.
+No new conflict was recorded. The static workaround remained present while the
+native kernel subnet route was absent in both initial and final snapshots.
+Network and logging settings were unchanged; capture helpers exited and recurring
+polling stayed off. This adds a bounded transition observation, not reproduction
+of the original fault, proof of prevention or evidence that Stop caused it.
+See the [dated gain and transition result](P_GAIN_TRANSACTION.md#october-16-disabled-changed-p-roundtrip).
+
+The October 15 snapshot-diagnostics follow-up obtained a qualified no-action
+baseline with 37 successful PC status/SSH-port checks and 37 successful loopback
+status reads. It covered more than 180 seconds after the collector's readiness
+handshake, with zero packet-capture drops and confirmed observer exit. The static
+workaround and direct client route were present throughout; the native main-table
+subnet route was already absent. No new IPv4 loss or conflict trigger was captured.
+An earlier baseline missed its explicit finish handshake and remains unqualified;
+one of its PC HTTP reads timed out while SSH and loopback stayed available.
+
+The subsequent transition recorder failed on a Windows local progress-file
+replacement error. Its partial result does not qualify the maintenance cycle's
+network effects. Hardware completion checks and original-software restoration
+were obtained independently; lifecycle actions were not replayed for recording.
+The private recorder's replacement/cleanup logic was corrected and passed 28
+offline checks plus 12 actual Windows sharing-collision checks without robot
+requests. This does not retroactively qualify the interrupted capture.
+Finite capture periods are sampling bounds, not estimates of action completion
+or proof that an intermittent fault is fixed. No network settings were changed
+and scheduled polling remains off.
 
 For an experienced operator with an already trusted maintenance connection,
 use Pollen's [development workflow](https://huggingface.co/docs/reachy_mini/en/platforms/reachy_mini/development_workflow)
@@ -169,6 +236,19 @@ For a support report, keep a redacted summary of:
 Keep raw status, logs, addresses, Wi-Fi names, hardware identities, profile details,
 PINs, passwords and tokens private. Share the redacted summary with
 [Reachy's maintainers](https://github.com/pollen-robotics/reachy_mini/issues).
+
+An intentional maintenance stop also makes daemon HTTP unavailable. Verify
+service state through an existing trusted maintenance connection before treating
+that as a network recurrence. On October 15, an exact-session no-write recovery
+restored original software and normal service after a backed-up gain transaction
+failed its pre-write comparison. It required protected evidence, explicit
+operator authority, a persistent startup mask, verified owner exit and journal
+custody. The original pending record and backup were retained in protected
+history; no native gain-restoration claim was made. See the
+[maintenance recovery result](P_GAIN_TRANSACTION.md#october-15-no-write-recovery-and-original-service-restoration).
+This private recovery does not add a public control-page bypass. Pending
+transactions still require their applicable reviewed recovery procedure; manual
+deletion or automatic restart would discard necessary guards and evidence.
 
 Sources: [Pollen Bluetooth recovery](https://huggingface.co/docs/reachy_mini/en/platforms/reachy_mini/reset),
 [Pollen troubleshooting](https://huggingface.co/docs/reachy_mini/en/troubleshooting),

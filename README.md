@@ -20,6 +20,41 @@ Control currently admits daemon **1.10.0**. A robot observed on **1.11.0** remai
 blocked: offline candidate fixtures do not establish hardware compatibility.
 Guided network setup and control have separate version checks. Read the dated
 [status and verification limits](docs/STATUS.md) before connecting hardware.
+Read [head response and settling](docs/HEAD_RESPONSE.md) for acknowledgement,
+joint feedback and the unresolved yaw plateau.
+The [reversible I-gain trial](docs/I_GAIN_TRANSACTION.md) records an I0/I1 probe on
+motor 15. An attended I0/I1/I0 comparison reduced one upward following error but
+worsened the final return under I1; restored I0 reproduced baseline behavior.
+Whole-head tilt remained. I0 is retained; this is not a tuning recommendation.
+Its offline follow-up audits unrecorded I1 dwell and prepares a bounded serial
+failure observer. After isolated ARM virtual-servo qualification, a native-only
+installation passed disabled-device overhead checks. Moving-load validation
+and the cause of the earlier physical parsing fault remain open.
+The follow-up [single-upward-leg trial and monotonic log](docs/I_GAIN_TRANSACTION.md#single-upward-scope-and-monotonic-log-offline--october-20)
+now pass host and isolated ARM PTY validation. The
+[live owner adapter](docs/I_GAIN_TRANSACTION.md#live-owner-adapter-and-installation-preparation--october-20)
+also passed an isolated I0/I1/I0 wire trial and read-only production transport
+checks. The daemon patch is now installed and has passed
+[disabled-only baseline/candidate overhead checks](docs/I_GAIN_TRANSACTION.md#single-upward-daemon-installation-and-disabled-checks--october-20).
+The [single-upward I0/I1/I0 capture](docs/I_GAIN_TRANSACTION.md#single-upward-i0i1i0-capture--october-23)
+is now complete, with A2's interrupted closure recovered separately. I1 produced
+a delayed partial reduction of motor 15's error; restored I0 reproduced the
+baseline shortfall. Original settings are retained. Whole-head error, stationary
+admission rejections and serial reliability remain unresolved.
+The [stationary-health diagnostic candidate](docs/I_GAIN_TRANSACTION.md#stationary-health-installation-and-disabled-checks--october-25)
+now identifies Moving/velocity rejections from the current request without extra
+bus reads or changed admission rules. Its isolated ARM qualification has passing
+evidence for all 38 PTY cases across two batches and 21 daemon checks. One virtual
+serial timeout remains recorded. The patch is now installed, with disabled-only
+baseline/candidate overhead checks passed; physical reliability remains open.
+The [teleoperation research guide](docs/research/README.md) connects the dated
+engineering reports, reproducible offline comparators and next experiment gates.
+Its planner recommendations remain proposals; it does not admit new hardware behavior.
+The [repeatable six-axis comparison runner](docs/MOVEMENT_COMPARISON_MATRIX.md)
+defines visible interior-range trials, scored returns, timing and visual feedback.
+Its fourth approach is an offline-tested [persistent bounded follower](docs/BOUNDED_FOLLOWER.md).
+`npm run compare:offline` runs all four paths with synthetic feedback only; no
+robot connection or new browser motion mode is enabled by that command.
 
 Guided setup offers explicit Bluetooth capability probes, a checked local Wi-Fi
 API route, and robot-owned Settings/dashboard links. Unsupported Bluetooth,

@@ -53,7 +53,7 @@ function criticalResponse(route){
   if(route==='/api/daemon/robot-app-lock-status')return {state:'free'};
   if(route==='/api/apps/current-app-status')return null;
   if(route==='/api/move/running')return [];
-  if(route==='/api/state/full?use_pose_matrix=true')return {head_pose:{m:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]},body_yaw:0,antennas_position:[0,0]};
+  if(route==='/api/state/full?use_pose_matrix=true&with_head_joints=true')return {head_pose:{m:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]},body_yaw:0,antennas_position:[0,0]};
   throw Error(route);
 }
 test('optional media read failures never invalidate healthy control state',async()=>{
@@ -71,7 +71,7 @@ test('slow optional media request is coalesced and does not age mandatory snapsh
 
 test('robot timestamp and native joint evidence survive independently of local HTTP freshness',async()=>{
   const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'});
-  const native={timestamp:'2000-01-01T00:00:00+00:00',head_joints:[.1,-.2,.3,-.4,.5,-.6],control_mode:'enabled'};
+  const native={timestamp:'2000-01-01T00:00:00+00:00',head_joints:[.1,-.2,.3,-.4,.5,-.6,.7],control_mode:'enabled'};
   adapter.request=async route=>{
     if(route==='/api/media/status')return {available:false};
     const response=criticalResponse(route);
@@ -79,14 +79,54 @@ test('robot timestamp and native joint evidence survive independently of local H
   };
   const control=new RobotControl(adapter);let state=await control.status(),evidence=state.diagnostics.robotState;
   assert.equal(state.ready,true);assert.equal(evidence.timestamp,native.timestamp);assert.equal(evidence.controlMode,'enabled');
+  assert.equal(evidence.timestampMeaning,'response-created');assert.equal(evidence.sensorAgeKnown,false);
   assert.deepEqual(evidence.headJoints,native.head_joints);
   const read=state.diagnostics.snapshot.requests.find(request=>request.route.startsWith('/api/state/full'));
+  const query=new URL(read.route,'http://robot.invalid').searchParams;
+  assert.equal(query.get('with_head_joints'),'true');
+  assert.equal(query.get('use_pose_matrix'),'true');
+  assert.ok([...query.keys()].every(key=>!key.startsWith('with_target_')),'target flags never enter measured-state reads');
   assert.equal(evidence.readStartedAt,read.startedAt);assert.equal(evidence.readCompletedAt,read.completedAt);
   evidence.headJoints[0]=99;assert.equal(adapter.stateDiagnostics.headJoints[0],.1);assert.equal(native.head_joints[0],.1);
   state=await control.status();assert.equal(state.ready,true);assert.equal(state.diagnostics.robotState.timestamp,native.timestamp,'repeated daemon timestamp remains evidence, not a claim of sensor freshness');
   native.timestamp=null;native.head_joints=[NaN];native.control_mode=null;
   state=await control.status();assert.equal(state.ready,true);
   assert.equal(state.diagnostics.robotState.timestamp,null);assert.equal(state.diagnostics.robotState.headJoints,null);assert.equal(state.diagnostics.robotState.controlMode,null);
+});
+
+test('native joint sample time is optional evidence and cannot repair malformed joints or change admission',async()=>{
+  const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'});
+  const native={head_joints:[0,.1,-.2,.3,-.4,.5,-.6],head_joints_sample_timestamp:946684800};
+  const routes=[];
+  adapter.request=async(route,method='GET')=>{routes.push({route,method});if(route==='/api/media/status')return {available:false};const response=criticalResponse(route);return route.startsWith('/api/state/full')?{...response,...native}:response;};
+  const read=async()=>new RobotControl(adapter).status();
+  let state=await read();
+  assert.equal(state.ready,true);assert.equal(state.diagnostics.robotState.headJointsSampleTimestamp,946684800);
+  assert.equal(state.diagnostics.robotState.sensorAgeKnown,false);
+  for(const timestamp of [undefined,null,0,-1,NaN,Infinity,'946684800',true,{},Number.MAX_VALUE]) {
+    native.head_joints_sample_timestamp=timestamp;state=await read();
+    assert.equal(state.ready,true);assert.equal(state.diagnostics.robotState.headJointsSampleTimestamp,null);
+    assert.deepEqual(state.diagnostics.robotState.headJoints,native.head_joints);
+  }
+  native.head_joints_sample_timestamp=946684800;
+  for(const joints of [[],[0,.1,-.2,.3,-.4,.5],Array(8).fill(0),[0,0,0,0,0,0,NaN],null]) {
+    native.head_joints=joints;state=await read();
+    assert.equal(state.ready,true);assert.equal(state.diagnostics.robotState.headJoints,null);assert.equal(state.diagnostics.robotState.headJointsSampleTimestamp,null);
+  }
+  assert.ok(routes.every(r=>r.method==='GET'));
+  assert.equal(routes.filter(r=>r.route.startsWith('/api/state/full')).length,16,'one existing state GET per snapshot, no added sample-time poll');
+});
+
+test('missing joint feedback and response timestamps never claim known sensor age',async()=>{
+  for(const [expectedVersion,observedVersion] of [['1.10.0','1.10.0'],['1.10.0','1.11.0'],['1.11.0','1.10.0']]) {
+    const adapter=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion});
+    const routes=[];adapter.request=async(route,method='GET')=>{routes.push({route,method});if(route==='/api/media/status')return {available:false};const response=criticalResponse(route);if(route==='/api/daemon/status')return {...response,version:observedVersion};return route.startsWith('/api/state/full')?{...response,timestamp:new Date().toISOString(),head_joints:null}:response;};
+    const state=await new RobotControl(adapter).status();
+    assert.equal(state.diagnostics.robotState.headJoints,null);assert.equal(state.diagnostics.robotState.sensorAgeKnown,false);
+    assert.equal(state.diagnostics.robotState.timestampMeaning,observedVersion==='1.10.0'?'response-created':'unverified');
+    assert.equal(state.ready,expectedVersion===observedVersion,'diagnostic enrichment cannot widen version admission');
+    assert.equal(routes.filter(r=>r.route.startsWith('/api/state/full')).length,1);assert.ok(routes.every(r=>r.method==='GET'));
+  }
 });
 test('exhausted read recovery remains bounded across later browser polls until explicit Stop',async()=>{
   const {control,adapter}=fixture(),snapshot=adapter.snapshot.bind(adapter);let reads=0;
