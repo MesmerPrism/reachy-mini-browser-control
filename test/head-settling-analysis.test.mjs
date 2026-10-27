@@ -119,7 +119,9 @@ test('clock regressions are rejected rather than mixed into error windows',()=>{
 });
 
 test('saved CLI handles one sequence phase and prevents ambiguous commands, public output and overwrite',async t=>{
-  const local=await fs.realpath(fileURLToPath(new URL('../local',import.meta.url)));
+  const localPath=fileURLToPath(new URL('../local',import.meta.url));
+  await fs.mkdir(localPath,{recursive:true});
+  const local=await fs.realpath(localPath);
   const directory=await fs.mkdtemp(path.join(local,'head-settling-test-'));
   t.after(async()=>{assert(directory.startsWith(local+path.sep));await fs.rm(directory,{recursive:true,force:true});});
   const f=fixture(),trace=path.join(directory,'trace.jsonl'),motion=path.join(directory,'motion.json'),stop=path.join(directory,'stop.json'),output=path.join(directory,'result.json');
