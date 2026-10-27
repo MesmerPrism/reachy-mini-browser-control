@@ -4,9 +4,89 @@ import {RobotControl,DemoAdapter,ReachyAdapter} from '../server/control.mjs';
 import {headAngles,absoluteHeadPose,IDENTITY_POSE} from '../server/head-pose.mjs';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(predicate){for(let i=0;i<150&&!predicate();i++)await sleep(5);assert.ok(predicate());}
-function fixture(){const adapter=new DemoAdapter();adapter.awake=true;const writes=[];const set=adapter.setHead.bind(adapter);adapter.setHead=async(pose,body)=>{writes.push({pose,body});await set(pose,body);};return {adapter,control:new RobotControl(adapter),writes};}
+function fixture(options){const adapter=new DemoAdapter();adapter.awake=true;const writes=[];const set=adapter.setHead.bind(adapter);adapter.setHead=async(pose,body)=>{writes.push({pose,body});await set(pose,body);};return {adapter,control:new RobotControl(adapter,options),writes};}
 const target=(control,input)=>control.command({action:'head-target',epoch:control.epoch,...input});
 const near=(a,b,tolerance=1e-8)=>assert.ok(Math.abs(a-b)<tolerance,`${a} != ${b}`);
+
+test('explicit diagnostic body-reference tolerance is bounded and cannot be changed by command input',async()=>{
+  for(const value of [0,-1,2.01,NaN,Infinity,'2',null])assert.throws(()=>new RobotControl(new DemoAdapter(),{bodyYawReferenceToleranceDeg:value}),/tolerance/);
+  const ordinary=fixture();
+  await assert.rejects(target(ordinary.control,{yaw:2,bodyYawReference:.5*Math.PI/180,bodyYawReferenceToleranceDeg:2}),/0.25 degrees/);
+  assert.equal(ordinary.writes.length,0);assert.equal(ordinary.control.bodyYawReferenceToleranceDeg,.25);
+  assert.throws(()=>{ordinary.control.bodyYawReferenceToleranceDeg=2;},TypeError);
+});
+
+test('explicit survey tolerance preserves the exact body target despite small measured disagreement',async t=>{
+  const {control,adapter,writes}=fixture({bodyYawReferenceToleranceDeg:2});t.after(()=>control.stop());
+  const snapshot=adapter.snapshot.bind(adapter);
+  adapter.snapshot=async()=>({...await snapshot(),bodyYaw:1*Math.PI/180});
+  await target(control,{yaw:2,bodyYawReference:0,speedLimit:30});await control.headManualWorker;
+  assert.ok(writes.length);assert.ok(writes.every(x=>x.body===0));assert.equal(control.lastFault,null);
+  assert.equal((await control.status()).bodyYaw,1*Math.PI/180);
+  const count=writes.length;
+  await assert.rejects(target(control,{yaw:2,bodyYawReference:-1.01*Math.PI/180}),/within 2 degrees/);
+  assert.equal(writes.length,count);
+});
+
+test('survey tolerance still faults when body disagreement crosses its bound during a ramp',async t=>{
+  const {control,adapter,writes}=fixture({bodyYawReferenceToleranceDeg:2});t.after(()=>control.stop());
+  adapter.setHead=async(pose,body)=>{writes.push({pose,body});adapter.headPose=pose;adapter.bodyYaw=2.1*Math.PI/180;};
+  await target(control,{yaw:10,bodyYawReference:0,speedLimit:5});await control.headManualWorker;
+  assert.equal(control.lastFault.kind,'motion-failed');assert.match(control.lastFault.reason,/within 2 degrees/);
+  assert.ok(writes.length>0);assert.ok(writes.every(x=>headAngles(x.pose).yaw<10));
+  assert.equal(control.headManualGoal,null);assert.ok(control.recoveryNeeded);
+});
+
+test('fixed body reference tolerates encoder quantization and preserves an identical wire target across separate legs',async()=>{
+  const {control,adapter,writes}=fixture();const reference=.2;
+  for (const [yaw,counts] of [[-3,-1],[0,1],[3,0]]) {
+    adapter.bodyYaw=reference+counts*2*Math.PI/4096;
+    await target(control,{yaw,bodyYawReference:reference,speedLimit:30});await control.headManualWorker;
+    assert.ok(writes.length);assert.ok(writes.every(write=>write.body===reference));
+  }
+  assert.equal((await control.status()).bodyYaw,reference);
+});
+
+test('invalid or distant fixed body references are rejected without any motion write',async()=>{
+  const {control,writes}=fixture();
+  for (const bodyYawReference of [NaN,Infinity,null,undefined,'0',false,.3*Math.PI/180,2*Math.PI])
+    await assert.rejects(target(control,{yaw:3,bodyYawReference}),/Body yaw reference/);
+  assert.equal(writes.length,0);assert.equal(control.headManualGoal,null);
+});
+
+test('a fixed body reference survives delayed-write policy refresh while measured feedback stays distinct',async t=>{
+  const {control,adapter,writes}=fixture();let release;
+  t.after(async()=>{release?.();await control.stop();});
+  adapter.bodyYaw=.2;
+  adapter.setHead=async(pose,body)=>{
+    writes.push({pose,body});
+    if(writes.length===1)await new Promise(resolve=>release=resolve);
+    else {adapter.headPose=pose;adapter.bodyYaw=body;}
+  };
+  await target(control,{yaw:20});await until(()=>!!release);
+  adapter.headPose=absoluteHeadPose(IDENTITY_POSE,5,0,0);adapter.bodyYaw=.2+2*Math.PI/4096;
+  if(control.snapshotRead)await control.snapshotRead; // Drain the earlier coalesced read before checking the new feedback.
+  assert.equal((await control.status()).bodyYaw,adapter.bodyYaw);
+  await target(control,{yaw:6,bodyYawReference:.2,speedLimit:30});release();await control.headManualWorker;
+  assert.ok(writes.length>1);assert.ok(writes.every(write=>write.body===.2));
+  near(headAngles(writes.at(-1).pose).yaw,6);
+});
+
+test('native wire conversion matches an independent SciPy xyz rotation fixture',async()=>{
+  // SciPy Rotation.from_euler('xyz', [3, 2, 6], degrees=True), independently
+  // generated; row-major rotation and metre translations. Synthetic pose.
+  const expected=[.9939160595006975,-.10256871785933427,.04013134415016108,.001,
+    .10446478735209538,.9933498587596004,-.04840626308406757,-.002,
+    -.034899496702500976,.05230407459247085,.9980211966240685,.003,0,0,0,1];
+  const {adapter,control,writes}=fixture();adapter.headPose=absoluteHeadPose(adapter.headPose,0,2,3,{x:1,y:-2,z:3});adapter.bodyYaw=.4;
+  await target(control,{yaw:6});await control.headManualWorker;
+  assert.equal(writes.length,1);writes[0].pose.forEach((value,i)=>near(value,expected[i]));assert.equal(writes[0].body,.4);
+  const native=new ReachyAdapter({robotUrl:'http://robot.invalid:8000',expectedHardwareId:'test',expectedVersion:'1.10.0'});
+  let packet;native.request=async(route,method,body)=>{assert.equal(route,'/api/move/set_target');assert.equal(method,'POST');packet=JSON.parse(JSON.stringify(body));return {status:'ok'};};
+  await native.setHead(writes[0].pose,writes[0].body);
+  assert.deepEqual(Object.keys(packet).sort(),['target_body_yaw','target_head_pose']);
+  packet.target_head_pose.m.forEach((value,i)=>near(value,expected[i]));assert.equal(packet.target_body_yaw,.4);
+});
 test('absolute Euler helpers and status retain measured roll/translation',async()=>{
   const base=[...IDENTITY_POSE];base[3]=.12;base[7]=-.06;
   const pose=absoluteHeadPose(base,12,-7,8),angles=headAngles(pose);
@@ -122,10 +202,16 @@ test('manual head gate and pilot envelope are enforced by the server',async()=>{
   await assert.rejects(target(control,{yaw:2.01}),/yaw/);await assert.rejects(target(control,{pitch:2.01}),/pitch/);
   await target(control,{yaw:-2,pitch:2});await control.headManualWorker;assert.equal(writes.length,1);
 });
-test('a snapshot started before a target ACK cannot confirm measured arrival after the ACK',async()=>{
+test('a snapshot started before a target ACK cannot confirm measured arrival after the ACK',async t=>{
   const {control,adapter,writes}=fixture();const snapshot=adapter.snapshot.bind(adapter);
-  let releaseSnapshot,releaseWrite,reads=0;
-  adapter.snapshot=async()=>{reads++;if(reads===2)await new Promise(resolve=>releaseSnapshot=resolve);return snapshot();};
+  let releaseSnapshot,releaseWrite,releaseLaterRead,holdLaterReads=true,reads=0;
+  t.after(()=>{holdLaterReads=false;releaseSnapshot?.();releaseLaterRead?.();releaseWrite?.();});
+  adapter.snapshot=async()=>{
+    reads++;
+    if(reads===2)await new Promise(resolve=>releaseSnapshot=resolve);
+    else if(reads>=3 && holdLaterReads)await new Promise(resolve=>releaseLaterRead=resolve);
+    return snapshot();
+  };
   adapter.setHead=async(pose,body)=>{writes.push({pose,body});adapter.headPose=pose;await new Promise(resolve=>releaseWrite=resolve);};
   await target(control,{yaw:10});await until(()=>!!releaseSnapshot && !!releaseWrite);
   // Separate clock ticks so the old read undeniably predates the acknowledged write.
@@ -136,6 +222,9 @@ test('a snapshot started before a target ACK cannot confirm measured arrival aft
   assert.equal(progress.phase,'settling');assert.equal(progress.withinTolerance,true);
   assert.equal(progress.postWriteRead,false,'matching old telemetry never claims a post-ACK read');
   assert.equal(control.headHoldNeeded,true);assert.equal(writes.length,1);
+  // A later status read must not replace the deliberately pre-ACK sample while
+  // these assertions run, even when the test process is delayed under load.
+  holdLaterReads=false;releaseLaterRead?.();
   const stopping=control.stop();await until(()=>writes.length===2);releaseWrite();await stopping;
 });
 test('6DOF targets use native absolute millimetres and preserve omitted measured pose fields',async()=>{

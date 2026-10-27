@@ -69,6 +69,17 @@ export function controllerDiagnostics(snapshot = {}, context = {}) {
     writes: { armed: bool(options.armed),
       targetAcknowledgement: simulation ? 'simulated' : wireless ? 'queued-only' : 'adapter-dependent',
       uncertainOutcome, recoveryRequired },
+    // An HTTP/queue acknowledgement and even measured convergence do not expose
+    // the daemon's computed joints, serial result or per-motor goal acceptance.
+    // Native pose and joint cache are fetched separately by daemon 1.10.0.
+    motionEvidence: {
+      headPoseSource: simulation ? 'simulated' : bridge && state.diagnostics?.robotState?.timestampMeaning === 'response-created'
+        ? 'joint-forward-kinematics' : 'unknown',
+      poseJointSampleCorrelation: simulation ? 'not-applicable' : 'unknown',
+      daemonComputedJointTargets: simulation ? 'not-applicable' : 'unavailable',
+      serialWriteOutcome: simulation ? 'not-applicable' : 'unknown',
+      motorGoalAcceptance: simulation ? 'not-applicable' : 'unknown',
+    },
     blockedReasons,
   };
 }

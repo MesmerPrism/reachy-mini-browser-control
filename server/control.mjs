@@ -4,9 +4,23 @@ export const UI_LIMIT = 90;
 export const ANTENNA_FRAME_MS = 20;
 export const ANTENNA_SPEED_MIN = 5;
 export const ANTENNA_SPEED_MAX = 120;
-const STATUS_REFRESH_MS = 250;
+// A motion monitor makes at most ten attempts per second; external status/guard
+// callers still share its in-flight batch. Slow reads run back to back rather
+// than adding an idle 250ms interval to their start-based age.
+const STATUS_REFRESH_MS = 100;
 const STATUS_MAX_AGE_MS = 500;
 const MEDIA_REFRESH_MS = 1500;
+// A fixed experimental reference may absorb encoder quantization, but cannot
+// request an independent body turn. Ordinary controls omit this reference.
+function checkedBodyReference(reference, measured, toleranceDeg) {
+  if (!Number.isFinite(reference) || !Number.isFinite(measured)
+      || Math.abs(reference-measured)>toleranceDeg*Math.PI/180)
+    throw new ControlError(`Body yaw reference must remain within ${toleranceDeg} degrees of fresh measured body yaw`);
+  return reference;
+}
+// Native joint feedback is optional diagnostic evidence from this same read.
+// Target flags must stay off: requested targets are never measured feedback.
+const MEASURED_STATE_ROUTE = '/api/state/full?use_pose_matrix=true&with_head_joints=true';
 const rad = deg => deg * Math.PI / 180;
 const deg = value => value * 180 / Math.PI;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -17,13 +31,18 @@ export class ControlError extends Error {
 // One application operator; robot REST has no atomic multi-client ownership.
 // A generation fence discards delayed targets after stop/playback/disconnect.
 export class RobotControl {
-  constructor(adapter) {
+  constructor(adapter,{bodyYawReferenceToleranceDeg=.25}={}) {
+    // An explicit local diagnostic owner can qualify a wider tolerance. This
+    // immutable constructor policy is never selected by a browser command.
+    if(!Number.isFinite(bodyYawReferenceToleranceDeg)||bodyYawReferenceToleranceDeg<=0||bodyYawReferenceToleranceDeg>2)
+      throw new ControlError('Body-reference tolerance must be positive and at most 2 degrees',400);
+    Object.defineProperty(this,'bodyYawReferenceToleranceDeg',{value:bodyYawReferenceToleranceDeg});
     this.adapter = adapter; this.epoch = 0; this.pending = null;
     this.worker = null; this.operation = null; this.owned = new Set();
     this.activity = null; this.message = 'Ready'; this.catalog = [];
     this.lastHeartbeat = 0; this.closed = false; this.stopped = false;
     this.lastSent = null; this.stopBarrier = Promise.resolve(); this.connected = null;
-    this.snapshotRead = null; this.cachedStatus = null;
+    this.snapshotRead = null; this.snapshotPendingAt = null; this.cachedStatus = null;
     this.manualGoal = null; this.holdNeeded = false; this.lastWriteAt = 0;
     this.stopPending = false; this.stopRequests = 0;
     this.headStarting = false; this.headSession = null; this.headPending = null; this.headWorker = null; this.headHoldNeeded = false;
@@ -36,6 +55,7 @@ export class RobotControl {
   readSnapshot() {
     if (!this.snapshotRead) {
       const startedAt = Date.now();
+      this.snapshotPendingAt = startedAt;
       const record = error => {
         this.snapshotDiagnostics={startedAt,completedAt:Date.now(),readMs:Date.now()-startedAt,requests:this.adapter.snapshotTiming?.requests || null,...(error?{error:error.message,route:error.requestRoute || null}:{})};
         if(this.snapshotDiagnostics.readMs>STATUS_MAX_AGE_MS)this.lastSlowSnapshot=this.snapshotDiagnostics;
@@ -43,9 +63,30 @@ export class RobotControl {
       this.snapshotRead = Promise.resolve().then(() => this.adapter.snapshot())
         .then(info => {record();return { info, startedAt };})
         .catch(error=>{record(error);throw error;})
-        .finally(() => { this.snapshotRead = null; });
+        .finally(() => { this.snapshotRead = null; this.snapshotPendingAt = null; });
     }
     return this.snapshotRead;
+  }
+  monitorStatus() {
+    let stopped=false,timer=null;
+    const refresh=async()=>{
+      const startedAt=Date.now();
+      try {await this.status();} catch {}
+      if(!stopped && !this.closed) {
+        timer=setTimeout(refresh,Math.max(0,STATUS_REFRESH_MS-(Date.now()-startedAt)));
+        timer.unref?.();
+      }
+    };
+    refresh();
+    return ()=>{stopped=true;clearTimeout(timer);};
+  }
+  snapshotFreshness() {
+    const now=Date.now(),cached=this.cachedStatus;
+    return {maxAgeMs:STATUS_MAX_AGE_MS,cachedStartedAt:cached?.startedAt ?? null,
+      cachedAgeMs:cached ? now-cached.startedAt : null,
+      cachedReadMs:cached?.state?.diagnostics?.snapshot?.readMs ?? null,
+      pendingStartedAt:this.snapshotPendingAt,
+      pendingAgeMs:this.snapshotPendingAt===null ? null : now-this.snapshotPendingAt};
   }
   async status() {
     try {
@@ -98,7 +139,8 @@ export class RobotControl {
   recordFault(error,fallback='motion-failed') {
     const message=error.message || String(error);
     const kind=this.adapter.uncertain ? 'unknown-outcome' : /another motion|another app/i.test(message) ? 'foreign-motion' : /did not settle/i.test(message) ? 'unsettled-target' : /became stale|freshness limit/i.test(message) ? 'stale-status' : fallback;
-    this.lastFault={kind,reason:message,at:Date.now(),epoch:this.epoch,details:error.motionDiagnostics || null};
+    const details=kind==='stale-status' ? {...error.motionDiagnostics,freshness:error.motionFreshness || this.snapshotFreshness()} : error.motionDiagnostics || null;
+    this.lastFault={kind,reason:message,at:Date.now(),epoch:this.epoch,details};
     if(this.stopPending || this.holdNeeded || this.headHoldNeeded) {
       const active=this.autoRecovery && !this.autoRecovery.cancelled && !this.recoveryBlocked;
       this.recoveryNeeded=active ? {...this.lastFault,kind:this.autoRecovery.kind,automatic:true,reason:'Checking fresh robot state before holding measured position',attempts:this.autoRecovery.attempts,lastReadError:message} : {...this.lastFault,automatic:false,reason:`${message}; motion needs a confirmed Stop before controls can resume`};
@@ -238,6 +280,8 @@ export class RobotControl {
     if(speedLimit!==null && (!Number.isFinite(speedLimit) || speedLimit<ANTENNA_SPEED_MIN || speedLimit>ANTENNA_SPEED_MAX)) throw new ControlError('Speed limit must be between 5 and 120 degrees per second, or null for direct movement',400);
     const linearSpeedLimit=input.linearSpeedLimit ?? null;
     if(linearSpeedLimit!==null && (!Number.isFinite(linearSpeedLimit) || linearSpeedLimit<1 || linearSpeedLimit>50)) throw new ControlError('Linear speed limit must be between 1 and 50 millimetres per second, or null for direct movement',400);
+    const bodyYawReference=Object.hasOwn(input,'bodyYawReference') ? input.bodyYawReference : null;
+    if(Object.hasOwn(input,'bodyYawReference') && !Number.isFinite(bodyYawReference)) throw new ControlError('Body yaw reference must be finite radians',400);
     const blocked=()=>this.headStarting || this.headSession || this.headWorker || this.operation || this.worker || this.manualGoal || this.owned.size || (this.headHoldNeeded && !this.headManualWorker && !this.headManualGoal);
     if(blocked() || this.headManualStarting) throw new ControlError('Stop the current motion before manual head controls');
     this.headManualStarting=true;
@@ -245,17 +289,18 @@ export class RobotControl {
       const state=await this.guard(true);this.checkEpoch(input.epoch);
       if(blocked() || this.stopPending || this.stopRequests) throw new ControlError('Stop the current motion before manual head controls');
       if(!state.headAngles || !state.headPositionMm || !Number.isFinite(state.bodyYaw)) throw new ControlError('Measured head and body state unavailable');
+      if(bodyYawReference!==null) checkedBodyReference(bodyYawReference,state.bodyYaw,this.bodyYawReferenceToleranceDeg);
       const previous=this.headManualPending || this.headManualGoal || {...state.headAngles,...state.headPositionMm};
-      const changedPolicy=this.headManualGoal && (this.headManualGoal.speedLimit!==speedLimit || this.headManualGoal.linearSpeedLimit!==linearSpeedLimit);
+      const changedPolicy=this.headManualGoal && (this.headManualGoal.speedLimit!==speedLimit || this.headManualGoal.linearSpeedLimit!==linearSpeedLimit || this.headManualGoal.bodyYawReference!==bodyYawReference);
       if(changedPolicy) { this.headManualSent=null;this.headManualRevision++; }
       const baseline=!this.headManualGoal || changedPolicy ? rigidPose(state.headPose) : this.headManualGoal.baseline;
-      const bodyYaw=!this.headManualGoal || changedPolicy ? state.bodyYaw : this.headManualGoal.bodyYaw;
+      const bodyYaw=bodyYawReference ?? (!this.headManualGoal || changedPolicy ? state.bodyYaw : this.headManualGoal.bodyYaw);
       const goal={...Object.fromEntries(MANUAL_HEAD_AXES.map(axis=>[axis,previous[axis]])),...Object.fromEntries(axes.map(axis=>[axis,input[axis]]))};
       const distance=manualHeadDistance({...state.headAngles,...state.headPositionMm},goal);
       const travelSeconds=Math.max(speedLimit===null ? 0 : distance.angular/speedLimit,linearSpeedLimit===null ? 0 : distance.linear/linearSpeedLimit);
       const timeout=Math.min(120000,Math.max(10000,travelSeconds*2000+5000));
       if(!this.headManualGoal) {this.headManualWrite=null;this.headManualWriteSequence=0;}
-      const target={...goal,baseline,bodyYaw,speedLimit,linearSpeedLimit,revision:this.headManualRevision,epoch:this.epoch,deadline:Date.now()+timeout};
+      const target={...goal,baseline,bodyYaw,bodyYawReference,speedLimit,linearSpeedLimit,revision:this.headManualRevision,epoch:this.epoch,deadline:Date.now()+timeout};
       this.headManualPending=target;this.headManualGoal=target;this.stopped=false;
       this.startManualHeadWorker();
       return {ok:true,controlEpoch:this.epoch};
@@ -277,9 +322,7 @@ export class RobotControl {
     this.headManualWorker=worker;
   }
   async pumpManualHead() {
-    const refresh=()=>{this.status().catch(()=>{});};
-    const monitor=setInterval(refresh,STATUS_REFRESH_MS);
-    refresh();
+    const stopMonitor=this.monitorStatus();
     try {while((this.headManualPending || this.headManualGoal) && !this.closed) {
       if(this.headManualNeedsRefresh && this.headManualPending) {
         this.headManualNeedsRefresh=false;
@@ -287,7 +330,7 @@ export class RobotControl {
         const fresh=await this.status();
         const pending=this.headManualPending;
         if(pending && pending.epoch===this.epoch && fresh.headAngles && Number.isFinite(fresh.bodyYaw)) {
-          pending.baseline=rigidPose(fresh.headPose);pending.bodyYaw=fresh.bodyYaw;
+          pending.baseline=rigidPose(fresh.headPose);pending.bodyYaw=pending.bodyYawReference===null ? fresh.bodyYaw : checkedBodyReference(pending.bodyYawReference,fresh.bodyYaw,this.bodyYawReferenceToleranceDeg);
         }
         continue;
       }
@@ -302,11 +345,15 @@ export class RobotControl {
         throw error;
       }
       const cached=this.cachedStatus;
-      if(!cached || Date.now()-cached.startedAt>STATUS_MAX_AGE_MS)throw Error('Robot status became stale; head movement stopped');
+      if(!cached || Date.now()-cached.startedAt>STATUS_MAX_AGE_MS) {
+        const error=Error('Robot status became stale; head movement stopped');
+        error.motionFreshness=this.snapshotFreshness();throw error;
+      }
       const state=cached.state;
       if(!state.connected || !state.ready || !state.awake || this.adapter.uncertain)throw Error(state.blockedReason || this.adapter.uncertain || 'Robot unavailable for head movement');
       if(this.headSession || this.headWorker || this.worker || this.operation || this.owned.size)throw Error('Another motion is running');
       if(!state.headAngles || !state.headPositionMm)throw Error('Measured head pose unavailable');
+      if(target.bodyYawReference!==null) checkedBodyReference(target.bodyYawReference,state.bodyYaw,this.bodyYawReferenceToleranceDeg);
       const measured={...state.headAngles,...state.headPositionMm};
       if(!this.headManualPending) {
         const progress=manualHeadProgress(target,measured);
@@ -336,7 +383,7 @@ export class RobotControl {
       } else this.headManualSent=next;
       if(this.headManualPending===target && MANUAL_HEAD_AXES.every(axis=>next[axis]===target[axis]))this.headManualPending=null;
       if(this.headManualPending || this.headManualGoal)await pause(Math.max(0,HEAD_FRAME_MS-(performance.now()-started)));
-    }} finally {clearInterval(monitor);}
+    }} finally {stopMonitor();}
   }
   async startHead(input) {
     if (!this.adapter.headTrackingEnabled) throw new ControlError('Head following is disabled pending attended axis and body validation');
@@ -372,7 +419,7 @@ export class RobotControl {
     return {ok:true,controlEpoch:this.epoch};
   }
   async pumpHead(session) {
-    const monitor=setInterval(()=>{this.status().catch(()=>{});},STATUS_REFRESH_MS);
+    const stopMonitor=this.monitorStatus();
     try {
       while(this.headSession===session && session.epoch===this.epoch && !this.closed) {
         const cached=this.cachedStatus;
@@ -395,7 +442,7 @@ export class RobotControl {
         }
         await pause(HEAD_FRAME_MS);
       }
-    } finally { clearInterval(monitor); }
+    } finally { stopMonitor(); }
   }
   startWorker() {
     if (this.worker) return;
@@ -411,10 +458,8 @@ export class RobotControl {
   }
   async pump() {
     // Status I/O runs independently of the motor cadence. One shared snapshot
-    // prevents browser polls and drag requests from duplicating six GETs.
-    const refresh = () => { this.status().catch(() => {}); };
-    const monitor = setInterval(refresh, STATUS_REFRESH_MS);
-    refresh();
+    // prevents browser polls and drag requests from duplicating a live GET batch.
+    const stopMonitor=this.monitorStatus();
     try { while ((this.pending || this.manualGoal) && !this.closed) {
       if (this.rampNeedsRefresh && this.pending) {
         this.rampNeedsRefresh = false;
@@ -464,7 +509,7 @@ export class RobotControl {
       // Never queue catch-up frames: slow POST acknowledgements slow motion,
       // rather than increasing the step size or accumulating commands.
       if (this.pending || this.manualGoal) await pause(Math.max(0, ANTENNA_FRAME_MS - (performance.now() - frameStarted)));
-    } } finally { clearInterval(monitor); }
+    } } finally { stopMonitor(); }
   }
   async runAction(action, input, epoch) {
     if (this.worker) await this.worker;
@@ -609,7 +654,7 @@ export class ReachyAdapter {
         this.mediaState=media;this.mediaDiagnostics={ready:!!media.available && !media.released && !media.no_media,at:Date.now(),error:null};
       }).catch(error=>{this.mediaState=null;this.mediaDiagnostics={ready:false,at:Date.now(),error:error.message};}).finally(()=>{this.mediaRead=null;});
     }
-    const requests=['/api/daemon/status', '/api/daemon/robot-app-lock-status', '/api/apps/current-app-status','/api/state/full?use_pose_matrix=true', '/api/move/running'].map(route=>({route,method:'GET',startedAt:Date.now()}));
+    const requests=['/api/daemon/status', '/api/daemon/robot-app-lock-status', '/api/apps/current-app-status',MEASURED_STATE_ROUTE, '/api/move/running'].map(route=>({route,method:'GET',startedAt:Date.now()}));
     const results=await Promise.allSettled(requests.map(async timing=>{
       try {return await this.request(timing.route,'GET',null,3500,record=>Object.assign(timing,record));}
       catch(error){timing.error=error.message;throw error;}
@@ -620,12 +665,18 @@ export class ReachyAdapter {
     this.snapshotTiming={requests};
     const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
     const [d, lock, app, state, moves]=results.map(result=>result.value);
-    const poseRead=requests.find(request=>request.route==='/api/state/full?use_pose_matrix=true');
+    const poseRead=requests.find(request=>request.route===MEASURED_STATE_ROUTE);
     // Retain optional native evidence without equating the daemon clock with
     // this machine's clock or using unchanged encoder values as a stale gate.
-    this.stateDiagnostics={readStartedAt:poseRead.startedAt,readCompletedAt:poseRead.completedAt,
+      const headJoints=Array.isArray(state.head_joints) && state.head_joints.length===7 && state.head_joints.every(Number.isFinite) ? [...state.head_joints] : null;
+      const jointSampleTimestamp=state.head_joints_sample_timestamp;
+      this.stateDiagnostics={readStartedAt:poseRead.startedAt,readCompletedAt:poseRead.completedAt,
       timestamp:typeof state.timestamp==='string' && state.timestamp.length<=64 ? state.timestamp : null,
-      headJoints:Array.isArray(state.head_joints) && state.head_joints.length>0 && state.head_joints.length<=16 && state.head_joints.every(Number.isFinite) ? [...state.head_joints] : null,
+      timestampMeaning:d.version==='1.10.0' ? 'response-created' : 'unverified',sensorAgeKnown:false,
+        headJoints,
+        // Optional diagnostic proposal: retain native cache read time as supplied,
+        // without comparing clocks, renewing freshness or dating the FK pose.
+        headJointsSampleTimestamp:headJoints && Number.isFinite(jointSampleTimestamp) && jointSampleTimestamp>0 && jointSampleTimestamp<=Number.MAX_SAFE_INTEGER ? jointSampleTimestamp : null,
       controlMode:typeof state.control_mode==='string' && state.control_mode.length<=64 ? state.control_mode : null};
     const reasons = [];
     if (this.uncertain) reasons.push(this.uncertain);

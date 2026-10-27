@@ -1,6 +1,6 @@
 {
   "name": "reachy-mini-browser-control",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -10,6 +10,7 @@
     "start": "node server/index.mjs",
     "demo": "node server/index.mjs --demo",
     "test": "node --test test/*.test.mjs",
+    "compare:offline": "node tools/Run-Movement-Matrix.mjs --demo",
     "setup": "node tools/Setup-Local.mjs",
     "agent": "node tools/Agent-Diagnostics.mjs",
     "build:pages": "node tools/Prepare-HeadAssets.mjs && node tools/Build-Pages.mjs",
