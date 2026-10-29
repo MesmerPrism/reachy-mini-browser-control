@@ -1,7 +1,33 @@
-# Status — 2026-10-27
+# Status — 2026-10-29
 
 This is an independent prototype. The following separates observed hardware
 results from offline evidence; it is not a general compatibility certification.
+
+## Hosted Wireless 1.11 and connection guidance — October 29
+
+The hosted Wireless gate now accepts exact 1.10.0/1.11.0 with the pinned SDK 1.8.0.
+The existing real-SDK1.11 protocol suite now covers default admission of both
+versions and rejection of a session whose hardware identity differs from the
+checked robot. The local bridge and motor experiments retain their own gates.
+
+Connect shows network reachability, daemon compatibility, account/relay access
+and the verified browser session as separate steps. Live local checks are
+explicit GETs, expire after two minutes and reset on address change. Unknown
+account routes stay unverified; pasted status is labeled reported. Bluetooth
+address/identity survives Setup-to-Connect in memory, without retained secrets.
+
+A different physical 1.11.0 Wireless robot passed read-only REST/schema/state and
+app-lock checks, remaining ready/disabled with no reported errors. Its account
+was signed out and relay stopped; the rendered guide correctly shows that
+blocker. No power, motion, gain, network or account changes were made. Actual
+WebRTC/media/physical-control validation remains separate and requires the
+robot's account setup; see the [compatibility record](DAEMON_1_11_COMPATIBILITY.md).
+
+The source checkpoint passes 536 offline tests plus local and hosted builds.
+Desktop/mobile browser checks cover the blocker states, unknown optional checks,
+copied-status identity binding, expiry without input, Bluetooth address handover
+and a synthetic ready/asleep session. Publication retains the reviewed source
+inventory and immutable versioned download; this update is 0.3.7.
 
 The current [diagnostic sequence](STATIC_ERROR_TEST_PLAN.md#current-diagnostic-sequence--october-25)
 has completed the bounded P, longer I and paired-P direction blocks. UART receive

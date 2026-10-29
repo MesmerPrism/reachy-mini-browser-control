@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import WirelessPanel from './WirelessPanel.jsx';
 import FitText from './FitText.jsx';
-import FirstSetup, { ExistingRobotGuide } from './FirstSetup.jsx';
+import FirstSetup from './FirstSetup.jsx';
+import { WIRELESS_VERSION_LABEL } from '../src/daemon-compatibility.mjs';
 import RecoveryGuide from './RecoveryGuide.jsx';
 import PhoneController from './PhoneController.jsx';
 import './style.css';
@@ -17,6 +18,7 @@ function currentView() {
 function Page() {
   const [size, setSize] = useState('normal');
   const [view, setView] = useState(currentView);
+  const [connectionEvidence, setConnectionEvidence] = useState(null);
   const main = useRef(null);
   useEffect(() => {
     const navigate = () => { setView(currentView()); main.current?.focus({ preventScroll: true }); window.scrollTo(0, 0); };
@@ -30,19 +32,19 @@ function Page() {
       <section id="home" hidden={view !== 'home'}>
         <p className="intro">Move the head and antennas, see Reachy’s measured pose, watch its camera and talk through its speaker.</p>
         <div className="start-options"><div><h2>Reachy is already on Wi-Fi</h2><p>Check the current robot, connect your account and open the controls. No network reset or setup wizard is needed.</p><a className="download primary" href="#connect">Connect to Reachy</a></div><div><h2>Reachy needs Wi-Fi</h2><p>Use guided connection checks to find a supported setup route for your Wireless Mini.</p><a className="download" href="#setup">Configure Wi-Fi</a></div></div>
-        <p>Browser control currently supports Wireless daemon 1.10.0. Network setup can use other versions’ own browser pages. For Lite over USB, use the <a href="#local">local controller</a>.</p>
+        <p>Browser control supports Wireless daemon {WIRELESS_VERSION_LABEL}. Network setup has its own compatibility checks. For Lite over USB, use the <a href="#local">local controller</a>.</p>
         <p>No robot yet? <a href="#demo">Try the simulated Reachy</a>. Move its head and see how the camera view changes in a 360° room. Demo also supports phone turn, nod and tilt, directly or paired to a PC.</p>
       </section>
-      <section id="connect" hidden={view !== 'connect'}>{view === 'connect' && <><WirelessPanel /><ExistingRobotGuide /><p className="workspace-note">Need a network first? <a href="#setup">Configure Wi-Fi</a>. Leaving this view disconnects the control session.</p></>}</section>
+      <section id="connect" hidden={view !== 'connect'}>{view === 'connect' && <><WirelessPanel evidence={connectionEvidence} onEvidence={setConnectionEvidence} /><p className="workspace-note">Leaving this view disconnects the control session. The address and check results stay in this page’s memory; reload clears them.</p></>}</section>
       <section id="demo" hidden={view !== 'demo'}>{view === 'demo' && <WirelessPanel initialDemo />}</section>
       <section id="phone" hidden={view !== 'phone'}>{view === 'phone' && <PhoneController />}</section>
       <section id="recover" hidden={view !== 'recover'}>{view === 'recover' && <RecoveryGuide />}</section>
       <section id="setup" hidden={view !== 'setup'}><h2>Set up your robot</h2>
         <p>Keep this tab on Setup while provisioning. Leaving setup disconnects Bluetooth and clears credentials; a network request already submitted to Reachy may still finish there.</p>
         <p>Exploring without hardware? <a href="#demo">Try the simulated robot and camera</a>.</p>
-        {view === 'setup' && <FirstSetup />}
+        {view === 'setup' && <FirstSetup onEvidence={setConnectionEvidence} />}
         <details><summary>Official setup alternative and control requirements</summary>
-        <ol><li><strong>Choose your model.</strong> Browser-only control is for Wireless Mini with daemon 1.10.0. For Lite over USB, use the <a href="#local">local controller</a>. Other daemon versions are blocked until their protocol has been checked.</li>
+        <ol><li><strong>Choose your model.</strong> Browser-only control is for Wireless Mini with daemon {WIRELESS_VERSION_LABEL}. For Lite over USB, use the <a href="#local">local controller</a>. Other daemon versions remain blocked.</li>
           <li><strong>Connect Wireless to Wi-Fi.</strong> Power it on and follow the official <a href="https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/get_started">first-time connection guide</a> in Reachy Mini Control. Its wizard joins the robot’s temporary access point and configures your home network. Keep your computer and robot on the same home network for the simplest connection. Guest networks or firewalls may prevent peer-to-peer media.</li>
           <li><strong>Enable remote access.</strong> In the official Control app, sign the robot in to your Hugging Face account and enable its remote/WebRTC connection. Check that the robot appears in Pollen’s robot picker. Follow the <a href="https://huggingface.co/docs/reachy_mini/SDK/javascript-sdk">official browser connection documentation</a> if it does not.</li>
           <li><strong>Create a read token.</strong> Open <a href="https://huggingface.co/settings/tokens">Hugging Face access tokens</a>, create a read token in the same account, and paste it in the form above. The token is held in this tab’s memory and sent to Pollen’s signaling service; it is never written to browser storage or our server. Clear it by disconnecting or closing the tab.</li>

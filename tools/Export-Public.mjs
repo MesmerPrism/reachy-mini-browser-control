@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 // This is a deliberately explicit publication list, never a recursive repo copy.
 // Adding a new runtime/setup file requires a fresh source and privacy review.
 export const PUBLIC_FILES = Object.freeze([
+  'src/daemon-compatibility.mjs', 'src/connection-readiness.mjs', 'public-site/ConnectionGuide.jsx', 'test/connection-readiness.test.mjs', 'test/fixtures/connection-qa.html', 'test/fixtures/connection-qa.jsx',
   '.gitignore', '.gitattributes', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'AGENTS.md', 'CONTRIBUTING.md',
   '.github/workflows/checks.yml', 'docs/ARCHITECTURE.md', 'docs/STATUS.md', 'docs/RECOVERY.md', 'docs/DAEMON_1_11_COMPATIBILITY.md', 'docs/HEAD_RESPONSE.md',
   'docs/STATIC_ERROR_TEST_PLAN.md', 'docs/P_GAIN_TRANSACTION.md', 'docs/I_GAIN_TRANSACTION.md',

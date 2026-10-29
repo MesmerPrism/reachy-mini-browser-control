@@ -36,11 +36,19 @@ function harness({ version = '1.11.0', identity = SYNTHETIC_ID, failure = null, 
   return { control, sent, Sdk: OfflineSdk, get sdk() { return instance; }, push: frame => instance._handleRobotMessage(JSON.parse(JSON.stringify(frame))) };
 }
 const degrees = value => value * 180 / Math.PI;
-test('public default remains 1.10 and rejects 1.11 through real SDK identity/version replies', async () => {
-  const h = harness(); const publicControl = new WirelessControl({ ReachyMini: h.Sdk });
-  await assert.rejects(publicControl.connect(), /not supported/); assert.equal(publicControl.expectedVersion, '1.10.0');
-  assert.equal(publicControl.sdk, null); assert.equal(h.sdk._dc, null); assert.equal(h.sdk.state, 'disconnected');
-  assert.deepEqual(h.sent.map(c => c.type), ['get_hardware_id', 'get_version']);
+test('public hosted adapter admits both exact audited daemons through the real SDK without startup motion', async () => {
+  for (const version of ['1.10.0','1.11.0']) {
+    const h = harness({version}); const publicControl = new WirelessControl({ ReachyMini: h.Sdk });
+    assert.equal((await publicControl.connect()).version,version);
+    assert.deepEqual(h.sent.map(c => c.type), ['get_hardware_id', 'get_version','get_state']);
+    await publicControl.close();assert.equal(publicControl.sdk,null);
+  }
+});
+
+test('checked local hardware identity must match the selected WebRTC robot before control', async () => {
+  const h=harness();const control=new WirelessControl({ReachyMini:h.Sdk,expectedHardwareId:'different-fixture-device'});
+  await assert.rejects(control.connect(),/identity.*match/i);assert.equal(control.sdk,null);
+  assert.deepEqual(h.sent.map(c=>c.type),['get_hardware_id','get_version']);
 });
 test('candidate accepts exact 1.11 state with optional IMU/DoA absent, null or present', async () => {
   for (const optional of ['absent', 'null', 'present']) {
