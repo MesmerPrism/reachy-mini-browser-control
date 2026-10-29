@@ -1,9 +1,30 @@
-# Daemon 1.11 candidate compatibility
+# Daemon 1.11 Wireless compatibility
 
-The public controller still admits daemon **1.10.0** by default. Tests construct
-an isolated 1.11 candidate adapter; passing them does not widen that gate or
-establish hardware compatibility. No robot, account, microphone, camera, updater
-or central service is used by this suite.
+The hosted Wireless adapter admits exact **1.10.0** and **1.11.0** using SDK
+**1.8.0**. Other versions remain refused; callers may also pin one version and
+the hardware identity from their local/Bluetooth check. The local bridge and
+motor experiment campaigns retain their separate qualification.
+
+On October 29 the 1.11.0 robot passed read-only daemon status, schema, current
+state, app-lock, account and relay checks. The rendered Connect page also read
+its actual status successfully: ready/disabled, signed out, relay stopped. No
+Wake, motion, setting update, camera or microphone request was sent. The current
+remaining real WebRTC check requires the user to sign this robot into Hugging
+Face and enable remote access. Protocol test coverage below establishes the
+wire contract; it does not certify physical motion or media on this robot.
+
+The Connect journey separates live facts, copied/reported facts, unknown account
+checks and current session telemetry. Checks expire after two minutes, reset on
+address change and stay in page memory only. An available or paired Bluetooth
+device is never treated as a completed browser-control session.
+
+The October 29 source checkpoint passes all 536 offline tests, the local and
+hosted production builds, and the explicit publication inventory/privacy checks.
+Rendered synthetic checks cover signed-out and disconnected-relay blockers,
+unknown/unsupported replies, copied-status identity mismatch, an idle expiry,
+refreshed Bluetooth address handover and a successful asleep session. Desktop
+and 390px mobile layouts were checked without horizontal overflow. The synthetic
+session does not validate real WebRTC transport or media.
 
 ## Exact sources
 
@@ -52,8 +73,7 @@ their existing validated state-event path.
 The hook is installed before session establishment and restored during close;
 retained SDK state is cleared, and late calls to the detached wrapper do nothing.
 This guard sends no commands and introduces no network, polling or reconnect.
-Both default 1.10 sessions and candidate 1.11 sessions use it. The daemon gate
-and npm dependency remain unchanged.
+Both 1.10 and 1.11 sessions use it. The npm dependency remains pinned.
 
 The combined identity/version reply wait now has a 5-second deadline. Timeout
 closes the SDK and removes adapter listeners; late replies cannot admit control.
@@ -73,8 +93,8 @@ export. See [current status](STATUS.md) for the maintained validation boundary.
 - SDK 1.8 has no `subscribePose` method. Our optional subscription returns false
   without sending a command; tests verify this path. The audited daemon opens
   its separate unordered pose channel only on explicit `subscribe_pose`, so our
-  normal SDK1.8 session does not request it. If a future SDK enables subscription,
-  audit data-channel routing separately: SDK1.8's `ondatachannel` does not
+  normal SDK 1.8 session does not request it. If a future SDK enables subscription,
+  audit data-channel routing separately: SDK 1.8's `ondatachannel` does not
   distinguish pose and reliable command channels.
 - No browser SDP/ICE, H.264 decoder, old-image encoder fallback or TURN relay
   negotiation is exercised. 1.11 changes video pipeline allocation and TURN

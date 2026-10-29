@@ -16,9 +16,12 @@ controls Wireless through the official SDK without a local Node bridge. Camera
 and microphone features require browser permissions. The read token remains in
 memory during the connection; it is not saved in browser storage or downloads.
 
-Control currently admits daemon **1.10.0**. A robot observed on **1.11.0** remains
-blocked: offline candidate fixtures do not establish hardware compatibility.
-Guided network setup and control have separate version checks. Read the dated
+Hosted Wireless control admits exact daemon **1.10.0** and **1.11.0** with the
+pinned SDK 1.8.0 and the same identity, freshness and no-startup-motion gates.
+The Connect page shows separate network, compatibility, account/relay and session
+checks. Local probes are explicit read-only actions; Bluetooth discoveries carry
+their address and identity into Connect in page memory. The local bridge and
+motor experiments retain their separate 1.10.0 qualification. Read the dated
 [status and verification limits](docs/STATUS.md) before connecting hardware.
 Read [head response and settling](docs/HEAD_RESPONSE.md) for acknowledgement,
 joint feedback and the unresolved yaw plateau.

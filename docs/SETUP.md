@@ -15,14 +15,21 @@ different robot does not require a reset or firmware update.
 1. Put this computer and the intended robot on the same Wi-Fi. Check the robot's
    current hostname or private IP in its app or your router; do not reuse a
    previous robot's identity or assume its old address belongs to this robot.
-2. Open the robot dashboard and daemon status using the page's hostname helper.
-   The helper only builds links and never scans or connects automatically. If
+2. Enter the current address in Connect and select **Check this robot**. This
+   explicitly reads daemon status, account sign-in and relay status; it sends no
+   credentials or robot writes. Browser protections can block local HTTP reads;
+   open the robot dashboard and daemon status links if needed. The page never
+   scans or connects automatically. If
    `reachy-mini.local` does not resolve, use the robot's current private IP.
    Optional pasted status is user-reported evidence, not a live identity check.
+   Bluetooth setup carries its reported address and identity into Connect in
+   page memory; reload clears that evidence. Changing address clears prior
+   checks, and live local checks expire after two minutes.
 3. Inspect errors and daemon state in the robot's own dashboard. If the daemon
    is stopped, start it there only when you intend to use it. Our page never
    starts or wakes a robot on connection. Unsupported daemon versions remain
-   blocked; do not change firmware to bypass the admission check.
+   blocked. Hosted Wireless admits exact 1.10.0 and 1.11.0; local bridge setup
+   remains 1.10.0. Do not change firmware to bypass an admission check.
 4. Use the robot-owned Hugging Face sign-in and remote/WebRTC options. The robot
    needs internet. Create a read token for the same account, review its scopes,
    then paste it into the controls. The token remains in tab memory and is
@@ -107,7 +114,7 @@ print the detected hardware identity.
 Open [guided setup](https://mesmerprism.com/reachy-mini/#setup), choose Bluetooth
 or Wi-Fi and keep the tab loaded during network changes. Neither route changes
 the computer's Wi-Fi automatically. Control uses a separate SDK connection,
-requires daemon **1.10.0**, and does not inherit the local bridge's Stop guarantees.
+requires Wireless daemon **1.10.0** or **1.11.0**, and does not inherit the local bridge's Stop guarantees.
 
 Bluetooth probes PING, Wi-Fi status and encrypted provisioning in sequence.
 Only an exact unsupported-command reply establishes command absence; timeouts

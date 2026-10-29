@@ -2,6 +2,7 @@
 // that a frame was queued on WebRTC; they are never represented as applied.
 import { rigidPose } from '../server/head-pose.mjs';
 import { installWirelessTelemetryGuard } from './wireless-telemetry.mjs';
+import { supportsWirelessVersion, WIRELESS_VERSION_LABEL } from './daemon-compatibility.mjs';
 const RAD = Math.PI / 180;
 const deg = value => value / RAD;
 const rad = value => value * RAD;
@@ -56,11 +57,12 @@ function step(from, to, seconds, angular = 20, linear = 10) {
 }
 
 export class WirelessControl {
-  constructor({ ReachyMini, expectedVersion = '1.10.0', now = () => Date.now(), connectionTimeoutMs = 5000 }) {
+  constructor({ ReachyMini, expectedVersion, expectedHardwareId = null, now = () => Date.now(), connectionTimeoutMs = 5000 }) {
     if (typeof ReachyMini !== 'function') throw Error('ReachyMini SDK constructor is required');
     if (!Number.isFinite(connectionTimeoutMs) || connectionTimeoutMs <= 0 || connectionTimeoutMs > 30000) throw Error('Identity timeout must be from 1 to 30000 milliseconds');
     this.connectionTimeoutMs = connectionTimeoutMs;
     this.ReachyMini = ReachyMini; this.expectedVersion = expectedVersion; this.now = now;
+    this.expectedHardwareId = expectedHardwareId;
     this.sdk = null; this.robotId = null; this.hardwareId = null; this.version = null;
     this.measured = null; this.lastSent = null; this.epoch = 0; this.uncertain = null; this.listeners = new Set(); this.detachVideo = null;
     this.onState = event => { if (this.sdk?.state === 'streaming') this.#recordState(event?.detail ?? this.sdk?.robotState); };
@@ -93,13 +95,14 @@ export class WirelessControl {
     const age=this.measured ? this.now()-this.measured.receivedAt : Infinity;
     const fresh = age>=0 && age<=1500;
     const connected = this.sdk?.state === 'streaming';
-    return { connected, ready: connected && !this.uncertain && !!this.hardwareId && this.version === this.expectedVersion && fresh,
+    return { connected, ready: connected && !this.uncertain && !!this.hardwareId && supportsWirelessVersion(this.version) && (!this.expectedVersion || this.version === this.expectedVersion) && fresh,
       awake: fresh && this.measured.awake, measured: this.measured ? { ...this.measured, head: { ...this.measured.head }, antennas: { ...this.measured.antennas } } : null,
       hardwareId: this.hardwareId, version: this.version, uncertain: this.uncertain, controlEpoch: this.epoch, ...this.capabilities,
       message: 'Wireless commands are queued only; application and Stop hold are unconfirmed.' };
   }
 
-  async connect({ token, robotId, pickRobot, video } = {}) {
+  async connect({ token, robotId, pickRobot, video, onProgress } = {}) {
+    const report = phase => { try { onProgress?.(phase); } catch { /* UI observers cannot alter connection admission. */ } };
     await this.close();
     const sdk = new this.ReachyMini({ autoStartFromUrl: false, appName: 'Reachy Mini Browser Control' });
     this.detachTelemetry = installWirelessTelemetryGuard(sdk, { now: this.now, onInvalid: () => {
@@ -110,14 +113,18 @@ export class WirelessControl {
     try {
       const authenticated = token ? false : (typeof sdk.authenticate === 'function' ? await sdk.authenticate() : false);
       if (!token && !authenticated) throw Error('Sign in to Hugging Face before selecting a robot');
+      report('account');
       await sdk.connect(token); // token is deliberately not retained by this class.
       const robots = await this.#robots(sdk);
+      report('selecting');
       const selected = robotId ?? (robots.length === 1 ? robots[0]?.id : await pickRobot?.(robots));
       if (!selected || !robots.some(robot => robot?.id === selected)) throw Error('Select one available Wireless Reachy Mini');
       // The SDK can emit its first video track while startSession is pending.
       // Attach before it so the initial camera stream is not lost.
       if (video) this.detachVideo = this.#attachVideo(sdk, video);
+      report('negotiating');
       await sdk.startSession(selected);
+      report('verifying');
       let identityTimer;
       const identityDeadline = new Promise((_, reject) => {
         identityTimer = setTimeout(() => reject(Error('Wireless robot identity and version check timed out')), this.connectionTimeoutMs);
@@ -125,10 +132,12 @@ export class WirelessControl {
       let hardwareId, version;
       try { [hardwareId, version] = await Promise.race([Promise.all([sdk.getHardwareId(), sdk.getVersion()]), identityDeadline]); }
       finally { clearTimeout(identityTimer); }
-      if (!hardwareId || version !== this.expectedVersion) throw Error('Wireless robot identity or daemon version is not supported');
+      if (!hardwareId || !supportsWirelessVersion(version) || this.expectedVersion && version !== this.expectedVersion) throw Error(`Wireless robot identity or daemon version is not supported. Supported versions: ${WIRELESS_VERSION_LABEL}.`);
+      if (this.expectedHardwareId && hardwareId !== this.expectedHardwareId) throw Error('Selected robot identity does not match the robot you checked. Check the address or choose the intended robot.');
       this.robotId = selected; this.hardwareId = hardwareId; this.version = version; sdk.requestState(); this.#emit();
+      report('connected');
       return { robotId: selected, hardwareId, version, limitedTransport: true };
-    } catch (error) { await this.close(); throw error; }
+    } catch (error) { report('failed'); await this.close(); throw error; }
   }
 
   #robots(sdk) {
