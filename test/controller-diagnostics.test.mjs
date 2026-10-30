@@ -21,7 +21,7 @@ test('hosted diagnostics distinguish receipt freshness, identity obtained and in
 });
 
 test('fresh receipt does not conceal incomplete telemetry, invalid time or an unsupported version', () => {
-  const state = wireless({ ready: false, version: '1.11.0' });
+  const state = wireless({ ready: false, version: '1.12.0' });
   delete state.measured.head.z;
   let summary = controllerDiagnostics(state, { now: 1100, expectedIdentityMatched: false });
   assert.equal(summary.telemetry.valid, false);
@@ -36,6 +36,14 @@ test('fresh receipt does not conceal incomplete telemetry, invalid time or an un
   summary = controllerDiagnostics(wireless(), { now: NaN });
   assert.equal(summary.telemetry.receiptAgeMs, null);
   assert.equal(summary.telemetry.fresh, null);
+});
+
+test('Wireless diagnostics admit both audited daemon versions without widening the bridge gate', () => {
+  for (const version of ['1.10.0','1.11.0']) {
+    const summary=controllerDiagnostics(wireless({version}),{transport:'wireless',now:1000});
+    assert.equal(summary.admission.versionAdmitted,true);
+  }
+  assert.equal(controllerDiagnostics(wireless({version:'1.11.0'}),{transport:'local-bridge',now:1000}).admission.versionAdmitted,false);
 });
 
 test('uncertain hosted outcome stays a bounded reason without implying bridge recovery', () => {

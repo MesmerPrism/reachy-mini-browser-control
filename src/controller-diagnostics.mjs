@@ -1,5 +1,6 @@
 // A bounded projection of already available state. This module never calls an
 // adapter, refreshes telemetry, changes admission, or includes raw error text.
+import { supportsWirelessVersion } from './daemon-compatibility.mjs';
 const transports = ['wireless', 'local-bridge', 'simulation'];
 const bool = value => typeof value === 'boolean' ? value : null;
 const number = value => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER ? value : null;
@@ -38,7 +39,7 @@ export function controllerDiagnostics(snapshot = {}, context = {}) {
     : bridge && connected === true && ready === true ? true : null;
   const expectedIdentityMatched = simulation ? null : bool(options.expectedIdentityMatched) ?? (bridge && ready === true && connected === true ? true : null);
   const daemonVersion = version(state.version);
-  const versionAdmitted = simulation ? null : daemonVersion !== null ? daemonVersion === '1.10.0' : bridge && ready === true && connected === true ? true : null;
+  const versionAdmitted = simulation ? null : daemonVersion !== null ? wireless ? supportsWirelessVersion(daemonVersion) : daemonVersion === '1.10.0' : bridge && ready === true && connected === true ? true : null;
   // The bridge exposes recovery and retained write/fault outcomes, but does not
   // always expose its adapter uncertainty latch. A historical fault alone does
   // not prove a current latch. Unknown remains unknown when not admitted.

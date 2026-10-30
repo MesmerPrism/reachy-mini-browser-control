@@ -330,7 +330,7 @@ export default function FirstSetup({ createClient = createFirstSetupClient, brow
         <dl className="setup-checks"><dt>Bluetooth access and reported identity</dt><dd>{outcomes[access]}</dd>{checks.map(check => <div key={check.id}><dt>{check.label}</dt><dd>{outcomes[check.outcome]}{check.code ? ` (${check.code.replaceAll('_', ' ')})` : ''}</dd></div>)}</dl>
         <p>In the chooser, wait up to 30 seconds for a named Reachy entry. An “Unknown or unsupported device” entry does not identify your robot.</p>
         {identity && <dl className="setup-identity"><dt>Selected device</dt><dd>{identity.deviceName || 'Unnamed Bluetooth device'}</dd><dt>Reported hardware identity</dt><dd>{identity.hardwareId || 'Not exposed by this firmware'}</dd><dt>Reported address information</dt><dd>{identity.network || 'Not exposed by this firmware'}</dd></dl>}
-        {connected && /^CONNECTED /.test(identity?.network || '') && checks.every(check => check.outcome === 'passed') && !pendingWifi && <p>Reachy reports it is already on Wi-Fi. <a href="#connect">Continue to connection checks</a> to verify its daemon and account access. Its reported address and identity stay available there.</p>}
+        {connected && /^CONNECTED /.test(identity?.network || '') && checks.every(check => check.outcome === 'passed') && !pendingWifi && <p>Reachy reports it is already on Wi-Fi. <a href="#connect">Continue to connection checks</a> and choose Local network for direct control without an account, or Account access for remote control. Its reported address and identity stay available there.</p>}
         <div className="actions">{connected && <button type="button" className="primary" onClick={() => setStep(2)}>Continue with Bluetooth</button>}<button type="button" onClick={useWifi} disabled={busy}>Try direct Wi-Fi setup</button><button type="button" onClick={useBrowser} disabled={busy}>Continue with robot browser</button><button type="button" onClick={select} disabled={capability !== 'ready' || busy || connected || Boolean(pendingWifi)}>Try Bluetooth again</button><button type="button" onClick={disconnect} disabled={!client.current}>Disconnect Bluetooth</button></div>
       </>}
       {route === 'browser' && <>
@@ -390,9 +390,11 @@ export default function FirstSetup({ createClient = createFirstSetupClient, brow
       {links && (updateAttempt || daemon?.wireless && daemon.version === '1.2.11') && <RobotUpdate host={host} attempt={updateAttempt} onAttempt={setUpdateAttempt} onDaemon={setDaemon} createClient={createUpdateClient} />}
       <DaemonStatusForm onResult={setDaemon} />
       <p>{guidance.text}</p>
-      <p>Browser control supports Wireless daemon {WIRELESS_VERSION_LABEL}. Setup or update success does not verify account access or a control session.</p>
+      <p>Browser control supports Wireless daemon {WIRELESS_VERSION_LABEL}. <a href="#connect">Open connection checks</a> and choose Local network on the same Wi-Fi, without an account or download. Setup or update success does not verify a control session.</p>
+      <details><summary>Optional: Hugging Face account access</summary>
       {guidance.oauth && links ? <p><a href={links.oauth} target="_blank" rel="noopener noreferrer">Open Reachy’s Hugging Face sign-in</a>. Review the requested permissions before approving. The robot needs internet.</p> : <p>Use the sign-in and remote-access options actually provided by your robot’s dashboard or the <a href="https://huggingface.co/docs/reachy_mini/SDK/javascript-sdk" target="_blank" rel="noopener noreferrer">official browser connection guide</a>. Older images need a separate compatibility review before browser control.</p>}
       {daemon?.wireless && supportsWirelessVersion(daemon.version) && <p>After enabling remote access, create a <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">read token for the same account</a> and <a className="download" href="#connect">Open connection checks</a>.</p>}
+      </details>
     </>}
     {step > 0 && <div className="actions"><button type="button" disabled={busy} onClick={() => setStep(current => current - 1)}>Back</button></div>}
   </div>;

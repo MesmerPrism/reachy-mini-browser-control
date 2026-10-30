@@ -12,17 +12,20 @@ for dependency and asset licenses.
 
 Open [mesmerprism.com/reachy-mini](https://mesmerprism.com/reachy-mini/) or the
 [hardware-free demo](https://mesmerprism.com/reachy-mini/#demo). The hosted app
-controls Wireless through the official SDK without a local Node bridge. Camera
-and microphone features require browser permissions. The read token remains in
-memory during the connection; it is not saved in browser storage or downloads.
+controls Wireless through the pinned SDK without a local Node bridge. Select
+**Local network** for a direct same-network connection without an account or
+download, or **Account access** for Pollen's Hugging Face connection service.
+Local access requires a browser that permits local WebSockets. Camera and
+microphone features require the relevant permissions. Account tokens remain
+in tab memory; they are not saved in browser storage or downloads.
 
 Hosted Wireless control admits exact daemon **1.10.0** and **1.11.0** with the
 pinned SDK 1.8.0 and the same identity, freshness and no-startup-motion gates.
-The Connect page shows separate network, compatibility, account/relay and session
-checks. Local probes are explicit read-only actions; Bluetooth discoveries carry
+The Connect page shows separate network, compatibility, local/account access and
+session checks. Local probes are explicit read-only actions; Bluetooth discoveries carry
 their address and identity into Connect in page memory. The local bridge and
 motor experiments retain their separate 1.10.0 qualification. Read the dated
-[status and verification limits](docs/STATUS.md) before connecting hardware.
+[status and verification limits](docs/STATUS.md) and [local connection details](docs/LOCAL_CONNECTION.md) before connecting hardware.
 Read [head response and settling](docs/HEAD_RESPONSE.md) for acknowledgement,
 joint feedback and the unresolved yaw plateau.
 The [reversible I-gain trial](docs/I_GAIN_TRANSACTION.md) records an I0/I1 probe on

@@ -1,7 +1,23 @@
-# Status — 2026-10-29
+# Status — 2026-10-30
 
 This is an independent prototype. The following separates observed hardware
 results from offline evidence; it is not a general compatibility certification.
+
+## Direct local connection — October 30
+
+Connect now offers Local network without a Hugging Face account, software
+download or laptop bridge. It uses the existing robot WebSocket signaller and
+retains the pinned SDK and WirelessControl gates. The usual 1.10.0 robot passed
+stationary local preview identity/version/fresh-state/asleep checks and explicit
+disconnect, with no motor writes. The robot's CORS and software were unchanged.
+Production HTTPS/browser differences and physical movement remain separate
+qualification; see [local connection](LOCAL_CONNECTION.md).
+
+The prepared sequential movement-runner change also passed the isolated ARM
+generated-PTY independent and persistent three-block suites on this robot.
+Strace confirmed no physical device opens or network connections and the
+production inventory stayed unchanged. This qualifies the prepared runner on
+ARM; it does not promote the partial historical movement comparison to complete.
 
 ## Hosted Wireless 1.11 and connection guidance — October 29
 
