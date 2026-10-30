@@ -28,8 +28,10 @@ weakened. Account access remains an explicit alternative.
 On October 30 the usual physical 1.10.0 robot passed a stationary local preview
 connection: live identity/version, fresh measured pose, asleep motor state,
 camera negotiation and explicit disconnect. Wake remained separate and no motor
-command was sent. Production HTTPS validation and movement/media quality are
-separate checks. The different 1.11.0 robot previously negotiated local identity
+command was sent. The deployed HTTPS page was also tested in the in-app browser:
+that browser blocked local WebSockets before the handshake, and the page kept
+control disabled with an explicit error. Standalone-browser HTTPS operation and
+physical movement remain unqualified. The different 1.11.0 robot previously negotiated local identity
 but had unstable/slow links; stable local operation on it remains unqualified.
 
 Offline tests use the actual pinned SDK for local discovery and lifecycle,

@@ -90,6 +90,7 @@ export function auditPublicFile(name, bytes) {
   }
   if (/\.woff2?$/i.test(name)) throw Error(`Unreviewed font: ${name}`);
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  if (text.includes('\r')) throw Error(`Publication text must use LF line endings: ${name}`);
   if (text.includes('\0')) throw Error(`Non-text publication content: ${name}`);
   // Reject personal machine paths, UNC roots, credentials and network addresses.
   // Safe localhost bindings, generic DNS names and synthetic robot.invalid remain.
