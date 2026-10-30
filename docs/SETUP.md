@@ -7,6 +7,21 @@ needed for the [demo](https://mesmerprism.com/reachy-mini/#demo).
 
 ## Connect an already initialized Wireless
 
+For direct same-network control, open [Connect](https://mesmerprism.com/reachy-mini/#connect),
+select **Local network**, and enter Reachy's private IP or `.local` hostname.
+Select **Connect locally** and allow local-network access if your browser asks.
+No Hugging Face account, laptop bridge, robot installation or software download
+is required. Bluetooth setup can supply the address. The optional HTTP status
+check may be blocked even when local WebRTC works. The session independently
+verifies identity, exact daemon version and fresh telemetry before controls
+become available. Connecting never wakes or moves Reachy.
+
+Browsers that block local WebSockets from HTTPS cannot use this path. Keep
+browser security enabled and use **Account access** instead. See
+[local connection and tested limits](LOCAL_CONNECTION.md).
+
+### Account access
+
 Open [browser controls](https://mesmerprism.com/reachy-mini/#connect). The
 “Connecting an already configured Reachy” guide is for a robot that already
 joined Wi-Fi; factory provisioning is a separate route. A new network or a
@@ -30,7 +45,7 @@ different robot does not require a reset or firmware update.
    starts or wakes a robot on connection. Unsupported daemon versions remain
    blocked. Hosted Wireless admits exact 1.10.0 and 1.11.0; local bridge setup
    remains 1.10.0. Do not change firmware to bypass an admission check.
-4. Use the robot-owned Hugging Face sign-in and remote/WebRTC options. The robot
+4. Select **Account access** in Connect. Use the robot-owned Hugging Face sign-in and remote/WebRTC options. The robot
    needs internet. Create a read token for the same account, review its scopes,
    then paste it into the controls. The token remains in tab memory and is
    cleared on disconnect or closing the tab.

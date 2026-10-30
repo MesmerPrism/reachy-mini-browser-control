@@ -47,7 +47,7 @@ export async function probeConnection(host, { fetchImpl = globalThis.fetch, now 
     loggedIn: boolean(auth.is_logged_in), relayConnected: boolean(relay.is_connected) };
 }
 
-export function connectionSteps({ evidence, status = {}, progress = 'idle', now = Date.now() } = {}) {
+export function connectionSteps({ evidence, status = {}, progress = 'idle', now = Date.now(), method = 'account' } = {}) {
   const active = status.connected && !!status.hardwareId && supportsWirelessVersion(status.version);
   const age = evidence?.source === 'live' ? now - evidence.checkedAt : Infinity;
   const fresh = age >= 0 && age <= CONNECTION_CHECK_MAX_AGE_MS;
@@ -64,5 +64,10 @@ export function connectionSteps({ evidence, status = {}, progress = 'idle', now 
     detail: accountViaSession ? 'Pollen’s service accepted the browser account and returned a robot.' : fresh && evidence.loggedIn === false ? 'Sign in to Hugging Face in Reachy Mini Control, then enable remote access for this robot.' : fresh && evidence.relayConnected === false ? 'The remote relay is not connected. Enable remote access and check sign-in and internet in Reachy Mini Control.' : fresh && evidence.loggedIn === true && evidence.relayConnected === true ? 'Reachy is signed in and its remote relay is connected. Use a read token from that same account.' : 'Use Reachy Mini Control to sign the robot into Hugging Face and enable remote access. The token below must belong to the same account. Missing local checks do not prevent remote connection.' };
   const session = { id: 'session', title: 'Connect this browser', state: status.ready && active ? 'done' : progress === 'failed' ? 'blocked' : 'unknown',
     detail: status.ready && active ? `Identity, daemon and fresh telemetry verified. ${status.awake ? 'Reachy is awake.' : 'Reachy is asleep. Wake is a separate action.'}` : active ? 'Session connected; waiting for fresh, complete robot telemetry.' : progress === 'failed' ? 'Connection did not complete. Use the error below to resolve the blocker, then start a new connection.' : 'Enter a read token, allow the Pollen connection, and select the intended robot. Connecting does not wake or move it.' };
+  if (method === 'local') {
+    if (!reached) network.detail = 'Join the same network as Reachy. Use its current Bluetooth-reported address or enter its private IP or .local hostname below. HTTP status checks are optional; Local connection checks the robot over WebRTC.';
+    if (!active) session.detail = progress === 'failed' ? 'Local connection did not complete. Resolve the error below, then connect again explicitly.' : 'Connect locally, allow browser local-network access if prompted, then verify identity and fresh telemetry. Connecting does not wake or move Reachy.';
+    return [network, version, { id: 'local', title: 'Open local access', state: accountViaSession ? 'done' : 'unknown', detail: accountViaSession ? 'Reachy’s local signaling service replied directly. No Hugging Face account or laptop bridge is used.' : 'Select Local connection below. Your browser must allow local WebSockets and the network must allow devices to communicate. No account, token or software download is needed.' }, session];
+  }
   return [network, version, account, session];
 }

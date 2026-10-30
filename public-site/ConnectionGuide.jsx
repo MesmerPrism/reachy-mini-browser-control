@@ -3,7 +3,7 @@ import { connectionSteps, probeConnection, mergeConnectionEvidence } from '../sr
 import { parseDaemonStatus, robotBrowserLinks } from '../src/setup-guidance.mjs';
 import { WIRELESS_VERSION_LABEL, supportsWirelessVersion } from '../src/daemon-compatibility.mjs';
 
-export default function ConnectionGuide({ evidence, onEvidence = () => {}, status = {}, progress = 'idle', busy = false, probe = probeConnection, now: sharedNow }) {
+export default function ConnectionGuide({ evidence, onEvidence = () => {}, status = {}, progress = 'idle', busy = false, probe = probeConnection, now: sharedNow, method = 'account' }) {
   const [host, setHost] = useState(evidence?.host || 'reachy-mini.local');
   const [localEvidence, setLocalEvidence] = useState(evidence);
   const [checking, setChecking] = useState(false), [error, setError] = useState(''), [now, setNow] = useState(Date.now);
@@ -11,7 +11,7 @@ export default function ConnectionGuide({ evidence, onEvidence = () => {}, statu
   useEffect(() => { const timer = sharedNow === undefined ? setInterval(() => setNow(Date.now()), 5000) : null; return () => { clearInterval(timer); revision.current++; }; }, []);
   const current = evidence ?? localEvidence;
   const record = next => { const result = mergeConnectionEvidence(current, next); setLocalEvidence(result); onEvidence(result); setNow(Date.now()); };
-  const steps = connectionSteps({ evidence: current, status, progress, now: sharedNow ?? now });
+  const steps = connectionSteps({ evidence: current, status, progress, now: sharedNow ?? now, method });
   const next = steps.find(step => step.state === 'blocked') || steps.find(step => step.state !== 'done');
   const links = robotBrowserLinks(host);
   const locked = busy || checking || status.connected;
@@ -23,7 +23,7 @@ export default function ConnectionGuide({ evidence, onEvidence = () => {}, statu
   }
   return <section className="connection-journey" aria-label="Connection steps">
     <h2>Connect your Reachy</h2>
-    <p>Two connections are needed: Reachy joins a network, then this page opens an account-based control session. Bluetooth helps with network setup. Browser control supports Wireless daemon {WIRELESS_VERSION_LABEL}.</p>
+    <p>{method === 'local' ? 'Connect directly to Reachy on the same network. No Hugging Face account, laptop bridge or download is needed. Bluetooth helps find its current address.' : 'Reachy joins a network, then this page opens an account-based control session through Pollen’s service. Bluetooth helps with network setup.'} Browser control supports Wireless daemon {WIRELESS_VERSION_LABEL}.</p>
     <ol className="connection-steps">{steps.map((step, index) => <li key={step.id} data-state={step.state}>
       <h3>{index + 1}. {step.title} <span className="connection-step-state">{step.state === 'done' ? current?.source === 'copied' && step.id === 'version' ? 'Reported version supported' : 'Complete' : step.state === 'blocked' ? 'Needs attention' : 'Not verified'}</span></h3>
       <p>{step.detail}</p>
@@ -37,9 +37,9 @@ export default function ConnectionGuide({ evidence, onEvidence = () => {}, statu
         <p>Optional read-only check. Use the current address from Bluetooth setup or Reachy Mini Control. Nothing connects, scans or moves automatically.</p>
       </form>
       {error && <p className="error" role="alert">{error}</p>}
-      {links && <div className="robot-links"><a href={links.dashboard} target="_blank" rel="noopener noreferrer">Open Reachy’s robot page</a><a href={links.status} target="_blank" rel="noopener noreferrer">Open daemon status</a>{supportsWirelessVersion(current?.version) && <a href={links.oauth} target="_blank" rel="noopener noreferrer">Sign Reachy into Hugging Face</a>}</div>}
-      <p>After signing in with Reachy Mini Control, enable remote access and close its active control session. Keep Reachy online.</p>
-      <p><a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">Create a Hugging Face read token</a>. Review its permissions yourself. The token field clears when connection starts. The SDK keeps the token in memory for this session; disconnect or close the tab to clear it.</p>
+      {links && <div className="robot-links"><a href={links.dashboard} target="_blank" rel="noopener noreferrer">Open Reachy’s robot page</a><a href={links.status} target="_blank" rel="noopener noreferrer">Open daemon status</a>{method === 'account' && supportsWirelessVersion(current?.version) && <a href={links.oauth} target="_blank" rel="noopener noreferrer">Sign Reachy into Hugging Face</a>}</div>}
+      {method === 'account' ? <><p>After signing in with Reachy Mini Control, enable remote access and close its active control session. Keep Reachy online.</p>
+      <p><a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">Create a Hugging Face read token</a>. Review its permissions yourself. The token field clears when connection starts. The SDK keeps the token in memory for this session; disconnect or close the tab to clear it.</p></> : <p>Close competing control sessions first. Local connection uses Reachy’s existing WebRTC service. If this browser blocks local WebSockets from HTTPS, use a supported browser or switch to account access; do not disable browser security.</p>}
       <details><summary>Browser cannot read the local robot?</summary>
         <p>HTTPS browser protections or local-network permissions can block a local HTTP check. Open the daemon status link, copy its JSON, and check it here. Copied status is reported evidence; the control session must still verify identity, version and fresh telemetry. Remote access can work without a local check.</p>
         <form className="connection-form" onSubmit={event => {

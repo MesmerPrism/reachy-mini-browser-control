@@ -10,6 +10,7 @@ import { createCommandFlight } from '../src/command-flight.mjs';
 import { stageTarget, assessStagedTarget } from '../src/staged-target.mjs';
 import ConnectionGuide from './ConnectionGuide.jsx';
 import { connectionSteps } from '../src/connection-readiness.mjs';
+import { createLocalWirelessSDK, localSignalingUrl } from '../src/local-wireless.mjs';
 const WebXRControls = lazy(() => import('../src/WebXRControls.jsx'));
 const RobotModel = lazy(() => import('../src/RobotModel.jsx'));
 const SimulatedCamera = lazy(() => import('./SimulatedCamera.jsx'));
@@ -19,19 +20,22 @@ const degrees = value => Number.isFinite(value) ? value.toFixed(1) : '—';
 function Slider({ label, value, min, max, measured, unit, disabled, onChange }) {
   return <div className="slider-row"><label><span className="slider-heading"><FitText>{label}</FitText><FitText>{`${value}${unit} requested`}</FitText></span><input type="range" min={min} max={max} step={1} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))} aria-label={label} /></label><FitText as="p" className="measured">{`${degrees(measured)}${unit} measured`}</FitText></div>;
 }
-export default function WirelessPanel({ initialDemo = false, expectedVersion, evidence, onEvidence, loadSDK = () => import('@pollen-robotics/reachy-mini-sdk'), readinessNow = Date.now }) {
+export default function WirelessPanel({ initialDemo = false, expectedVersion, evidence, onEvidence, loadSDK = () => import('@pollen-robotics/reachy-mini-sdk'), readinessNow = Date.now, initialConnectionMethod = 'local' }) {
   const control = useRef(null), latest = useRef({}), goal = useRef(null), tokenInput = useRef(null), video = useRef(null), webcam = useRef(null), tracker = useRef(null), follow = useRef(false), pose = useRef(null), talk = useRef(null), tickBusy = useRef(false), picker = useRef(null), generation = useRef(0), previewGeneration=useRef(0);
   const [status, setStatus] = useState({ connected: false }), [token, setToken] = useState(''), [consent, setConsent] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('Disconnected'), [demo, setDemo] = useState(false), [choices, setChoices] = useState([]), [selection, setSelection] = useState(''), [head, setHead] = useState(zero), [antennas, setAntennas] = useState({ left: 0, right: 0 }), [listen, setListen] = useState(false), [listeningVolume, setListeningVolume] = useState(60), [volume, setVolume] = useState(40), [webcamState, setWebcamState] = useState('off'), [following, setFollowing] = useState(false), [tracked, setTracked] = useState(null), [micState, setMicState] = useState('off'), [held, setHeld] = useState(false), [speed, setSpeed] = useState(20);
   const mutationFlight = useRef(createCommandFlight()), xrContext = useRef(null), phoneContext = useRef(null);
   const [xrEngaged, setXrEngaged] = useState(false), [stopRevision, setStopRevision] = useState(0);
   const [phoneEngaged, setPhoneEngaged] = useState(false);
   const [connectionProgress, setConnectionProgress] = useState('idle');
+  const [connectionMethod, setConnectionMethod] = useState(initialConnectionMethod);
   const [localEvidence, setLocalEvidence] = useState(evidence);
   const [, refreshConnectionClock] = useState(0);
   useEffect(() => { const timer = setInterval(() => refreshConnectionClock(value => value + 1), 5000); return () => clearInterval(timer); }, []);
   const currentEvidence = evidence ?? localEvidence, connectionNow = readinessNow();
   const recordEvidence = value => { setLocalEvidence(value); onEvidence?.(value); };
-  const connectionBlocker = connectionSteps({ evidence: currentEvidence, status, progress: connectionProgress, now: connectionNow }).find(step => ['version','account'].includes(step.id) && step.state === 'blocked');
+  const connectionBlocker = connectionSteps({ evidence: currentEvidence, status, progress: connectionProgress, now: connectionNow, method: connectionMethod }).find(step => ['version','account'].includes(step.id) && step.state === 'blocked');
+  const localHost = currentEvidence?.host || 'reachy-mini.local';
+  let localAddressValid = false; try { localSignalingUrl(localHost); localAddressValid = true; } catch { /* invalid address remains a visible blocker */ }
   latest.current = { status, busy, demo, speed, xrEngaged, phoneEngaged };
   const halt = () => { xrContext.current = null; phoneContext.current = null; setPhoneEngaged(false); goal.current = null; follow.current = false; setFollowing(false); talk.current?.disable(); };
   const stop = async () => { const gen=generation.current;setStopRevision(value => value + 1);halt();try { await performAction({ action: 'stop' }); } catch(error) { if(gen===generation.current)setError(error.message); } };
@@ -62,13 +66,24 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
     try {
       const { ReachyMini } = isDemo ? { ReachyMini: (await import('./demo-sdk.mjs')).DemoWirelessSDK } : await loadSDK();
       if (gen !== generation.current) return;
-      next = new WirelessControl({ ReachyMini, expectedVersion: isDemo ? '1.10.0' : expectedVersion, expectedHardwareId: isDemo ? null : currentEvidence?.expectedHardwareId || currentEvidence?.hardwareId }); control.current = next; setDemo(isDemo);
-      next.subscribe(value => { if (control.current === next) setStatus(value); });
-      await next.connect({ token: isDemo ? 'simulation' : captured, video: video.current, onProgress: phase => {
+      const local = !isDemo && connectionMethod === 'local';
+      const SDK = local ? createLocalWirelessSDK(ReachyMini, { host: localHost }) : ReachyMini;
+      next = new WirelessControl({ ReachyMini: SDK, connectionTimeoutMs: local ? 15000 : 5000, expectedVersion: isDemo ? '1.10.0' : expectedVersion, expectedHardwareId: isDemo ? null : currentEvidence?.expectedHardwareId || currentEvidence?.hardwareId }); control.current = next; setDemo(isDemo);
+      let wasConnected = false;
+      next.subscribe(value => {
+        if (control.current !== next) return;
+        setStatus(value);
+        if (value.connected) wasConnected = true;
+        else if (wasConnected) {
+          halt(); setConnectionProgress('failed');
+          setMessage('Connection ended; unsent requests discarded. Connect again explicitly.');
+        }
+      });
+      await next.connect({ token: isDemo ? 'simulation' : local ? undefined : captured, video: video.current, onProgress: phase => {
         if (gen !== generation.current) return;
         setConnectionProgress(phase);
         const messages = { account: 'Checking the account with Pollen’s service…', selecting: 'Account accepted. Choose the intended robot…', negotiating: 'Opening the robot’s WebRTC session…', verifying: 'Checking robot identity and daemon version…', connected: 'Identity and daemon verified. Waiting for fresh telemetry…', failed: 'Connection incomplete' };
-        setMessage(messages[phase] || 'Connecting…');
+        setMessage(local && phase === 'account' ? 'Opening Reachy’s local signaling service…' : local && phase === 'selecting' ? 'Local service replied. Selecting Reachy…' : messages[phase] || 'Connecting…');
       }, pickRobot: robots => new Promise(resolve => {
         setChoices(robots); setSelection(robots[0]?.id || ''); picker.current = resolve;
       }) });
@@ -76,9 +91,14 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
       setChoices([]); picker.current = null; next.subscribePose();
       const measured = next.snapshot().measured; if (measured) { setHead(Object.fromEntries(Object.keys(zero).map(axis => {return [axis,measured.head[axis]];}))); setAntennas({ left: measured.antennas.left, right: measured.antennas.right }); }
       talk.current = createWirelessTalk({ sdk: next.robot, allowed: () => { const state = next.snapshot(); return !document.hidden && state.connected && state.ready && state.awake && !state.measured?.running && control.current === next; }, capture: () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false }), onState: (state, held) => { setMicState(state); setHeld(held); }, onError: error => setError(error.message) });
-      if (!isDemo) { const v = await next.robot.getVolume(); if (Number.isFinite(v)) setVolume(v); }
+      if (!isDemo) {
+        // Volume is explicitly a requested value until Apply. SDK 1.8 shares
+        // one uncorrelated get/set reply slot; a startup read can hang setup or
+        // misidentify a later write acknowledgement. Do not issue that read.
+        if (!next.snapshot().connected) throw Error('The robot session ended during setup. Start a new connection explicitly.');
+      }
       setMessage(isDemo ? 'Simulation: no robot, microphone or camera connection' : 'Connected; press Wake explicitly to move Reachy');
-    } catch (error) { await next?.close(); if(gen===generation.current){if(control.current===next)control.current=null;setError(error.message);setStatus({connected:false});} } finally { if (gen === generation.current) setBusy(false); }
+    } catch (error) { await next?.close(); if(gen===generation.current){if(control.current===next)control.current=null;setConnectionProgress('failed');setError(error.message);setStatus({connected:false});} } finally { if (gen === generation.current) setBusy(false); }
   };
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -170,12 +190,14 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
     } catch (problem) { setError(problem.message); return false; }
   };
   return <>
-    {!initialDemo && <details className="connection-guide" open={!status.connected}><summary>{status.ready ? 'Connection verified' : 'Connection steps and blockers'}</summary><ConnectionGuide evidence={currentEvidence} onEvidence={recordEvidence} status={status} progress={connectionProgress} busy={busy} now={connectionNow} /></details>}
+    {!initialDemo && <div className="connection-form"><label htmlFor="connection-method">Connection method</label><select id="connection-method" value={connectionMethod} disabled={busy || status.connected} onChange={event => { setConnectionMethod(event.target.value); setToken(''); setError(''); setConnectionProgress('idle'); }}><option value="local">Local network · no account or download</option><option value="account">Account access · Hugging Face</option></select></div>}
+    {!initialDemo && <details className="connection-guide" open={!status.connected}><summary>{status.ready ? 'Connection verified' : 'Connection steps and blockers'}</summary><ConnectionGuide evidence={currentEvidence} onEvidence={recordEvidence} status={status} progress={connectionProgress} busy={busy} now={connectionNow} method={connectionMethod} /></details>}
     {!status.connected && initialDemo && <div className="actions"><button type="button" disabled={busy} onClick={() => void connect(true)}>Start simulation</button></div>}
     {!status.connected && !initialDemo && <form className="connection-form" onSubmit={event => { event.preventDefault(); void connect(false); }}>
-      <label htmlFor="hf-token">Hugging Face read token</label><input ref={tokenInput} id="hf-token" type="password" autoComplete="off" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} disabled={busy} placeholder="Paste your own read token" />
+      {connectionMethod === 'account' ? <><label htmlFor="hf-token">Hugging Face read token</label><input ref={tokenInput} id="hf-token" type="password" autoComplete="off" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} disabled={busy} placeholder="Paste your own read token" />
       <label className="checkbox"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} />Connect through Pollen’s signaling service. My token stays in this tab’s memory.</label>
-      <button className="primary" disabled={busy || !token.trim() || !consent || !!connectionBlocker}>Connect to my robot</button>
+      </> : <p>Connect directly to {localHost}. No account credentials are sent. Wake remains a separate action.</p>}
+      <button className="primary" disabled={busy || (connectionMethod === 'account' ? !token.trim() || !consent : !localAddressValid) || !!connectionBlocker}>{connectionMethod === 'local' ? 'Connect locally' : 'Connect to my robot'}</button>
       {connectionBlocker && <p>Connection is blocked at “{connectionBlocker.title}”. Complete that step above, then check the robot again.</p>}
     </form>}
     {choices.length > 0 && <div className="connection-form"><label htmlFor="robot-picker">Choose a robot</label><select id="robot-picker" value={selection} onChange={event => setSelection(event.target.value)}>{choices.map(robot => <option key={robot.id} value={robot.id}>{robot.meta?.name || robot.id}</option>)}</select><button onClick={() => picker.current?.(selection)}>Start selected session</button><button onClick={() => picker.current?.(null)}>Cancel connection</button></div>}

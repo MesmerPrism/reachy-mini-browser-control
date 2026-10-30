@@ -5,6 +5,14 @@ import { probeConnection, connectionSteps, mergeConnectionEvidence, bluetoothCon
 
 const status = { version: '1.11.0', hardware_id: 'fixture-device', wireless_version: true, state: 'running', backend_status: { ready: true, motor_control_mode: 'disabled', error: null }, error: null };
 const response = body => ({ ok: true, json: async () => body });
+
+test('local connection requires no account or relay even when both are explicitly unavailable', () => {
+  const evidence={source:'live',host:'fixture.local',checkedAt:100,reachable:true,version:'1.10.0',wireless:true,hardwareId:'fixture',ready:true,hasError:false,loggedIn:false,relayConnected:false};
+  const steps=connectionSteps({evidence,method:'local',now:100});
+  assert.equal(steps.some(s=>s.id==='account'),false);
+  assert.equal(steps.some(s=>s.state==='blocked'),false);
+  assert.equal(steps.find(s=>s.id==='local').state,'unknown');
+});
 test('hosted Wireless admits exact audited versions, never adjacent or prerelease versions', () => {
   for (const version of ['1.10.0','1.11.0']) assert.equal(supportsWirelessVersion(version),true);
   for (const version of ['1.11.1','1.12.0','1.11.0-dev','v1.11.0',null,undefined]) assert.equal(supportsWirelessVersion(version),false);

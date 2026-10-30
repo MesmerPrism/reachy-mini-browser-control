@@ -182,6 +182,11 @@ validates identity/version and measured state, but bridge-specific Stop/recovery
 guarantees do not automatically apply to the SDK transport. Shared telemetry guards
 reject incomplete or stale state before it can refresh a control baseline.
 
+Its explicit Local network option substitutes the selected robot's existing
+GStreamer WebSocket signaller for the account service. It preserves the same
+SDK WebRTC/command path and admission wrapper, without HTTP CORS changes,
+credentials, a laptop bridge or automatic reconnect. See [local connection](LOCAL_CONNECTION.md).
+
 Guided setup is a separate capability surface: explicit Bluetooth probes, bounded
 direct requests to a chosen local host, and robot-owned browser handoffs. Network
 submission and optional updating require explicit input. Lost responses remain
