@@ -111,3 +111,6 @@ test('export writes a verifiable complete source release and preserves website f
     await fs.rm(resolved,{recursive:true,force:true});
   }
 });
+test('publication rejects text whose line endings would change after Git checkout', () => {
+  assert.throws(()=>auditPublicFile('src/fixture.mjs',Buffer.from('export const okay = true;\r\n')),/line ending|LF/i);
+});

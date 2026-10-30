@@ -10,8 +10,10 @@ download or laptop bridge. It uses the existing robot WebSocket signaller and
 retains the pinned SDK and WirelessControl gates. The usual 1.10.0 robot passed
 stationary local preview identity/version/fresh-state/asleep checks and explicit
 disconnect, with no motor writes. The robot's CORS and software were unchanged.
-Production HTTPS/browser differences and physical movement remain separate
-qualification; see [local connection](LOCAL_CONNECTION.md).
+The deployed HTTPS route correctly reports a blocked local WebSocket in the
+in-app browser; that browser cannot currently use the direct path. Standalone
+browser HTTPS access and physical movement remain separate qualification; see
+[local connection](LOCAL_CONNECTION.md).
 
 The prepared sequential movement-runner change also passed the isolated ARM
 generated-PTY independent and persistent three-block suites on this robot.
