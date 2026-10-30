@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { controllerDiagnostics } from '../src/controller-diagnostics.mjs';
 
 const known = value => value === true ? 'Yes' : value === false ? 'No' : 'Unknown';
-export default function ControllerDiagnostics({ snapshot, demo = false }) {
+export default function ControllerDiagnostics({ snapshot, demo = false, lastError = '' }) {
   const reportId = useId();
   const [report, setReport] = useState(''), [copyMessage, setCopyMessage] = useState('');
   const context = { transport: demo ? 'simulation' : 'wireless', now: Date.now() };
@@ -20,6 +20,7 @@ export default function ControllerDiagnostics({ snapshot, demo = false }) {
   return <details className="control-section connection-details"><summary>Connection & diagnostics</summary>
     <p>{demo ? 'Simulation only: these values do not verify a physical robot.' : 'This reads the controller’s current snapshot. It does not connect, request new robot state or send commands.'}</p>
     {!demo && snapshot.connected && <p>Check the intended robot’s hardware ID: {snapshot.hardwareId || 'checking'}. This identity is omitted from the copied summary.</p>}
+    {lastError && <p className="error">Last control error: {lastError}</p>}
     <dl className="diagnostic-facts">
       <div><dt>Connection</dt><dd>{diagnostic.connected ? 'Connected' : 'Disconnected'}</dd></div>
       <div><dt>Fresh admitted state</dt><dd>{known(diagnostic.ready)}</dd></div>

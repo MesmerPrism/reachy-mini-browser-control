@@ -120,7 +120,7 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
       if (follow.current) {
         const tracked = pose.current;
         if (!tracked?.tracked || !tracked.calibrated || performance.now() - tracked.receivedAt + tracked.ageMs > 250) { follow.current = false; setFollowing(false); void stop(); return; }
-        target = { action: 'head-manual', pose: { ...state.measured.head, yaw: Math.max(-20,Math.min(20,tracked.yaw)), pitch: Math.max(-15,Math.min(15,tracked.pitch)) } };
+        target = { action: 'head-manual', pose: { yaw: Math.max(-20,Math.min(20,tracked.yaw)), pitch: Math.max(-15,Math.min(15,tracked.pitch)) } };
       }
       if (!target || latest.current.busy) return;
       tickBusy.current = true;
@@ -128,11 +128,24 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
       catch (error) { if(control.current===current && current.snapshot().controlEpoch===state.controlEpoch){ if(goal.current === target)goal.current = null; follow.current = false; setFollowing(false); setError(error.message); } }
       finally { tickBusy.current = false; }
     }, 50);
-    const hide = () => { if (document.hidden) { void disconnect(); } };
-    const blur = () => { if (goal.current || follow.current) void stop(); else talk.current?.release(); };
+    const pause = () => {
+      const current = control.current;
+      const stopMotion = !!(goal.current || follow.current || xrContext.current || phoneContext.current);
+      halt(); stopPreview(); setStopRevision(value => value + 1);
+      setListen(false); current?.robot?.setAudioMuted?.(true);
+      try { current?.suspend({ stopMotion }); } catch (problem) { setError(problem.message); }
+      if (current?.snapshot().connected) setMessage('Manual controls paused; connection retained. Submitted emotes and Wake/Sleep may finish. Return and make a new control input.');
+    };
+    const resume = () => {
+      if (document.hidden) return;
+      try { control.current?.resume(); } catch (problem) { setError(problem.message); }
+      if (control.current?.snapshot().connected) setMessage('Connection retained; waiting for fresh telemetry and a new control input.');
+    };
+    const hide = () => { if (document.hidden) pause(); else resume(); };
+    const blur = pause;
     const exit = () => { generation.current++; halt(); stopPreview(); void control.current?.close(); };
-    document.addEventListener('visibilitychange', hide); window.addEventListener('blur', blur); window.addEventListener('pagehide', exit);
-    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', hide); window.removeEventListener('blur', blur); window.removeEventListener('pagehide', exit); exit(); };
+    document.addEventListener('visibilitychange', hide); window.addEventListener('blur', blur); window.addEventListener('focus', resume); window.addEventListener('pagehide', exit);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', hide); window.removeEventListener('blur', blur); window.removeEventListener('focus', resume); window.removeEventListener('pagehide', exit); exit(); };
   }, []);
   useEffect(() => { if (initialDemo) void connect(true); }, []);
   useEffect(() => { const node = video.current; if (node) { node.muted = !listen; node.volume = listeningVolume / 100; control.current?.robot?.setAudioMuted(!listen); if (listen) void node.play().catch(error => setError(error.message)); } }, [listen, listeningVolume]);
@@ -223,6 +236,8 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
         </section>
         <Suspense fallback={<section className="control-section"><h2>Reachy in 3D</h2><p>Loading model…</p></section>}><RobotModel control={modelControl} schematic Text={FitText} antennaControl={antennaControl} /></Suspense>
         <section className="control-section operator-head"><h2>Head movement</h2>
+          {error && <p className="error">Last control error: {error}</p>}
+          <button disabled={!canMove || following || xrEngaged || phoneEngaged} onClick={() => manualHead({ ...zero })}>Center all head axes</button>
           <div className="spatial-orientation"><OrientationPad contextKey={headGestureKey} values={head} measured={status.measured?.head} disabled={!canMove || following || xrEngaged || phoneEngaged} onChange={manualHead} /><AngleControl contextKey={headGestureKey} label="Tilt" value={head.roll} measured={status.measured?.head.roll} limit={15} disabled={!canMove || following || xrEngaged || phoneEngaged} onChange={roll => manualHead({ roll })} /></div>
           <button disabled={!canMove || following || xrEngaged || phoneEngaged} onClick={() => manualHead({ yaw: 0, pitch: 0, roll: 0 })}>Center orientation</button>
           <p className="spatial-help">Solid = requested · dashed = measured. Directions are Reachy’s own.</p>
@@ -258,6 +273,6 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
         <AgentConsole snapshot={() => control.current?.snapshot() || { connected: false }} diagnosticsContext={{ transport: demo || initialDemo ? 'simulation' : 'wireless' }} execute={executeAgent} onDisarm={() => { goal.current = null; }} sessionKey={antennaKey} disabled={!status.connected || busy || following || xrEngaged || phoneEngaged} />
       </div>
     </div>
-    <div className="controller-options"><ControllerDiagnostics key={antennaKey} snapshot={status} demo={demo || initialDemo} /></div>
+    <div className="controller-options"><ControllerDiagnostics key={antennaKey} snapshot={status} demo={demo || initialDemo} lastError={error} /></div>
   </>;
 }

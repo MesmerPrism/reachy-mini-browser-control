@@ -5,6 +5,29 @@ results from offline evidence; it is not a general compatibility certification.
 
 ## Direct local connection — October 30
 
+The user subsequently connected from the deployed HTTPS page in normal Brave,
+woke the usual robot and moved its head and antennas. They reported head control
+then stopping while antennas remained active, and a disconnect on tab switching.
+Read-only telemetry still showed a ready, enabled daemon with no reported errors;
+head translation had crossed the UI's conservative limits.
+
+Version 0.3.10 fixes a reproduced browser feedback error: partial head commands
+previously copied omitted axes from each new measurement, allowing following
+error to become new target motion. Omitted head axes, body yaw and antenna sides
+now retain their last queued reference until the control epoch is invalidated.
+Tracking requests only its edited yaw/pitch axes. Initial out-of-range baselines
+still reject partial commands; explicit Center all head axes uses the existing
+bounded ramp. Measured feedback is unchanged and limits are not widened.
+
+Blur/hidden now pauses input, discards intent, stops active manual outputs and
+releases microphone/tracking while retaining the session. Returning requests
+fresh telemetry and requires new input; page exit and Disconnect still close.
+Submitted daemon emotes and in-flight Wake/Sleep can finish while paused; stale
+manual ramp references cannot interrupt them during tab switching.
+The latest error is also visible beside Head movement and in diagnostics.
+Regression evidence is offline and simulated; corrected physical behavior in
+Brave remains a separate check. No gains, robot software or mode changes apply.
+
 Connect now offers Local network without a Hugging Face account, software
 download or laptop bridge. It uses the existing robot WebSocket signaller and
 retains the pinned SDK and WirelessControl gates. The usual 1.10.0 robot passed
