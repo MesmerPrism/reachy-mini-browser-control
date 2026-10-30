@@ -95,9 +95,13 @@ test('antenna boundary roundoff preserves the omitted side but never admits expl
     assert.ok(Math.abs(control.sdk.sent.at(-1)[1].antennas[side === 'right' ? 0 : 1] - antennas[side === 'right' ? 0 : 1]) < 1e-14);
     const count = control.sdk.sent.length;
     await assert.rejects(control.command(target(control, { action: 'antennas', targets: { [side]: held } })), /exceeds/);
+    assert.equal(control.sdk.sent.length, count, 'explicit overshoot cannot queue a frame');
+    // Once Stop discards the queued reference, the new measured baseline must
+    // pass the original material-overshoot check again.
+    control.stop(); const afterStop = control.sdk.sent.length;
     antennas[side === 'right' ? 0 : 1] = sign * (90 + 1e-8) * Math.PI / 180; push();
     await assert.rejects(control.command(target(control, { action: 'antennas', targets: { [side === 'left' ? 'right' : 'left']: 1 } })), /exceeds/);
-    assert.equal(control.sdk.sent.length, count);
+    assert.equal(control.sdk.sent.length, afterStop);
     await control.close();
   }
 });
@@ -170,5 +174,111 @@ test('incomplete activity telemetry and backwards clock do not authorize a write
   let time=10;const control=new WirelessControl({ReachyMini:FakeSdk,now:()=>time});await control.connect();
   control.sdk.push({head:matrix,antennas:[0,0],body_yaw:0,motor_mode:'enabled'});assert.equal(control.snapshot().ready,false);
   ready(control);time=9;assert.equal(control.snapshot().ready,false);await assert.rejects(control.command({action:'wake'}),/Fresh/);
+  await control.close();
+});
+
+test('repeated partial head edits never integrate following error into omitted axes or body yaw', async () => {
+  let time = 0;
+  const control = new WirelessControl({ ReachyMini: FakeSdk, now: () => time });
+  await control.connect(); ready(control);
+  for (let i = 0; i < 80; i++) {
+    await control.command(target(control, { action: 'head-manual', pose: { yaw: 10 } }));
+    const sent = control.sdk.sent.at(-1)[1];
+    assert.equal(sent.head[7], 0, 'unrequested translation keeps its queued reference');
+    assert.equal(sent.body_yaw, 0, 'unrequested body yaw keeps its queued reference');
+    // Feed back a persistent 0.2 mm following error relative to each command.
+    // Copying each measurement into the next target accumulates to the limit.
+    const measured = [...sent.head]; measured[7] += .0002;
+    time += 50;
+    control.sdk.push({ head: measured, antennas: [0,0], body_yaw: .001, motor_mode: 'enabled', is_move_running: false });
+  }
+  assert.equal(control.snapshot().measured.head.y, .2, 'actual feedback remains distinct');
+  await control.close();
+});
+
+test('partial antenna edits keep the omitted queued target despite following error', async () => {
+  let time = 0; const control = new WirelessControl({ ReachyMini: FakeSdk, now: () => time });
+  await control.connect(); ready(control);
+  await control.command(target(control, { action: 'antennas', targets: { left: 30 } }));
+  time += 50;
+  control.sdk.push({ head: matrix, antennas: [.01,0], body_yaw: 0, motor_mode: 'enabled', is_move_running: false });
+  await control.command(target(control, { action: 'antennas', targets: { left: 30 } }));
+  assert.equal(control.sdk.sent.at(-1)[1].antennas[0], 0);
+  await control.close();
+});
+
+test('tab suspension retains the session, stops active targets once, and requires new foreground telemetry and intent', async () => {
+  let time = 0; const control = new WirelessControl({ ReachyMini: FakeSdk, now: () => time });
+  await control.connect(); ready(control);
+  const sdk = control.sdk;
+  await control.command(target(control, { action: 'head-manual', pose: { yaw: 10 } }));
+  const epoch = control.snapshot().controlEpoch;
+  control.suspend(); const sent = sdk.sent.length;
+  assert.equal(control.sdk, sdk); assert.equal(control.snapshot().connected, true);
+  assert.equal(control.snapshot().ready, false); assert.equal(control.snapshot().suspended, true);
+  assert.equal(sdk.sent.at(-2)[0], 'stop_move');
+  control.suspend(); assert.equal(sdk.sent.length, sent, 'blur followed by hidden cannot repeat Stop');
+  ready(control); assert.equal(control.snapshot().ready, false, 'background packets cannot enable controls');
+  control.resume(); assert.equal(control.snapshot().ready, false, 'background telemetry is discarded');
+  await assert.rejects(control.command({ action: 'head-manual', pose: { yaw: 10 }, epoch }), /expired/);
+  await assert.rejects(control.command(target(control, { action: 'head-manual', pose: { yaw: 10 } })), /Fresh/);
+  assert.equal(sdk.sent.length, sent, 'resume issues no motor writes or replay');
+  time += 50; ready(control); assert.equal(control.snapshot().ready, true);
+  await control.command(target(control, { action: 'head-manual', pose: { yaw: -5 } }));
+  assert.equal(control.sdk.sent.at(-1)[1].head[4], 0, 'fresh input starts a new ramp');
+  await control.close();
+});
+
+test('idle tab suspension sends no motor writes and preserves uncertain outcome locks', async () => {
+  const control = new WirelessControl({ ReachyMini: FakeSdk }); await control.connect(); ready(control);
+  control.sdk.setVolume = async () => null;
+  await assert.rejects(control.command({ action: 'volume', value: 10 }));
+  const before = control.sdk.sent.length;
+  control.suspend(); control.resume(); ready(control);
+  assert.equal(control.sdk.sent.length, before);
+  assert.match(control.snapshot().uncertain, /volume outcome is unknown/);
+  assert.equal(control.snapshot().ready, false);
+  await control.close();
+});
+
+test('an explicit full center request can recover an out-of-range measured baseline at the existing slew limit', async () => {
+  let time = 0; const control = new WirelessControl({ ReachyMini: FakeSdk, now: () => time });
+  await control.connect();
+  const outside = absoluteHeadPose(matrix, 0, 0, 0, { x: 0, y: 12.5, z: -11.2 });
+  control.sdk.push({ head: outside, antennas: [0,0], body_yaw: .1, motor_mode: 'enabled', is_move_running: false });
+  await assert.rejects(control.command(target(control, { action: 'head-manual', pose: { yaw: 1 } })), /\(y, z\)/);
+  assert.equal(control.sdk.sent.length, 0);
+  const center = () => control.command(target(control, { action: 'head-manual', pose: { yaw: 0, pitch: 0, roll: 0, x: 0, y: 0, z: 0 } }));
+  await center(); assert.deepEqual(control.sdk.sent.at(-1)[1].head, outside, 'first frame cannot jump');
+  time = 50; await center();
+  const next = control.sdk.sent.at(-1)[1].head;
+  assert.ok(next[7] < outside[7] && next[11] > outside[11]);
+  assert.ok(Math.hypot(next[7] - outside[7], next[11] - outside[11]) <= .00050000001);
+  assert.equal(control.sdk.sent.at(-1)[1].body_yaw, .1);
+  await control.close();
+});
+
+test('tab-away cannot interrupt an in-flight Sleep with an old manual hold', async () => {
+  const control = new WirelessControl({ ReachyMini: FakeSdk }); await control.connect(); ready(control);
+  await control.command(target(control, { action: 'head-manual', pose: { yaw: 5 } }));
+  let finishSleep; control.sdk.gotoSleep = () => new Promise(resolve => { finishSleep = resolve; });
+  const sleeping = control.command({ action: 'sleep' }); const count = control.sdk.sent.length;
+  control.suspend({ stopMotion: true });
+  assert.equal(control.sdk.sent.length, count, 'power transition is not cancelled or given a measured hold');
+  finishSleep(); await sleeping;
+  assert.equal(control.snapshot().ready, false);
+  await control.close();
+});
+
+test('tab-away does not interrupt an emote or another reported move through stale manual references', async () => {
+  const control = new WirelessControl({ ReachyMini: FakeSdk }); await control.connect(); ready(control);
+  await control.command(target(control, { action: 'head-manual', pose: { yaw: 5 } }));
+  await control.command(target(control, { action: 'emote', name: 'attentive1' }));
+  const afterEmote = control.sdk.sent.length;
+  control.suspend(); assert.equal(control.sdk.sent.length, afterEmote);
+  control.resume(); ready(control);
+  control.sdk.push({ head: matrix, antennas: [0,0], body_yaw: 0, motor_mode: 'enabled', is_move_running: true });
+  const count = control.sdk.sent.length;
+  control.suspend(); assert.equal(control.sdk.sent.length, count);
   await control.close();
 });

@@ -64,7 +64,7 @@ export class WirelessControl {
     this.ReachyMini = ReachyMini; this.expectedVersion = expectedVersion; this.now = now;
     this.expectedHardwareId = expectedHardwareId;
     this.sdk = null; this.robotId = null; this.hardwareId = null; this.version = null;
-    this.measured = null; this.lastSent = null; this.epoch = 0; this.uncertain = null; this.listeners = new Set(); this.detachVideo = null;
+    this.measured = null; this.lastSent = null; this.epoch = 0; this.uncertain = null; this.suspended = false; this.pendingPower = null; this.listeners = new Set(); this.detachVideo = null;
     this.onState = event => { if (this.sdk?.state === 'streaming') this.#recordState(event?.detail ?? this.sdk?.robotState); };
     this.onSessionStopped = () => { this.measured = null; this.lastSent = null; ++this.epoch; this.#emit(); };
   }
@@ -95,7 +95,7 @@ export class WirelessControl {
     const age=this.measured ? this.now()-this.measured.receivedAt : Infinity;
     const fresh = age>=0 && age<=1500;
     const connected = this.sdk?.state === 'streaming';
-    return { connected, ready: connected && !this.uncertain && !!this.hardwareId && supportsWirelessVersion(this.version) && (!this.expectedVersion || this.version === this.expectedVersion) && fresh,
+    return { connected, suspended: this.suspended, ready: connected && !this.suspended && !this.pendingPower && !this.uncertain && !!this.hardwareId && supportsWirelessVersion(this.version) && (!this.expectedVersion || this.version === this.expectedVersion) && fresh,
       awake: fresh && this.measured.awake, measured: this.measured ? { ...this.measured, head: { ...this.measured.head }, antennas: { ...this.measured.antennas } } : null,
       hardwareId: this.hardwareId, version: this.version, uncertain: this.uncertain, controlEpoch: this.epoch, ...this.capabilities,
       message: 'Wireless commands are queued only; application and Stop hold are unconfirmed.' };
@@ -172,13 +172,22 @@ export class WirelessControl {
   async command(input) {
     const action = input?.action;
     if (!this.sdk || this.sdk.state !== 'streaming') throw Error('Wireless session is not streaming');
-    if (action === 'wake') { this.#freshVerified(); try { await this.sdk.wakeUp(); this.sdk.requestState(); return { queued: true, confirmed: true, action }; } catch (error) { this.#latchUnknown(action, error); throw error; } }
-    if (action === 'sleep') { this.#freshVerified(); ++this.epoch; try { await this.sdk.gotoSleep(); this.sdk.requestState(); return { queued: true, confirmed: true, action, controlEpoch: this.epoch }; } catch (error) { this.#latchUnknown(action, error); throw error; } }
+    if (action === 'wake' || action === 'sleep') {
+      this.#freshVerified(); ++this.epoch; this.lastSent = null;
+      const pending = { sdk: this.sdk }; this.pendingPower = pending; this.#emit();
+      try {
+        await (action === 'wake' ? pending.sdk.wakeUp() : pending.sdk.gotoSleep());
+        if (this.sdk !== pending.sdk) throw Error('Wireless session changed during the power command');
+        pending.sdk.requestState(); return { queued: true, confirmed: true, action, controlEpoch: this.epoch };
+      } catch (error) { if (this.sdk === pending.sdk) this.#latchUnknown(action, error); throw error; }
+      finally { if (this.pendingPower === pending) { this.pendingPower = null; this.#emit(); } }
+    }
     if (action === 'volume') { this.#freshVerified(); const value = input.value; if (!Number.isInteger(value) || value < 0 || value > 100) throw Error('Volume must be an integer from 0 to 100'); try { const applied = await this.sdk.setVolume(value); if (!Number.isInteger(applied) || applied<0 || applied>100) throw Error('No valid volume response'); return { queued: true, confirmed: true, action, value: applied }; } catch (error) { this.#latchUnknown(action, error); throw error; } }
     if (action === 'stop') return this.stop();
     if (action === 'emote') {
       this.#targetEpoch(input.epoch);
       this.#freshAwake(); if (!WIRELESS_EMOTES.includes(input.name)) throw Error('Choose an available Wireless emote');
+      ++this.epoch; this.lastSent = null;
       return this.#queued(this.sdk.sendRaw({ type: 'play_recorded_move', move_name: input.name }), action);
     }
     if (action === 'head-manual') { this.#targetEpoch(input.epoch); return this.#head(input.pose, input.speed); }
@@ -189,18 +198,22 @@ export class WirelessControl {
   #head(pose, speed = 20) {
     const measured = this.#freshAwake(); const source = measured.head;
     if (!Number.isFinite(speed) || speed < 5 || speed > 30) throw Error('Head speed must be from 5 to 30 degrees per second');
-    const goal = { ...source };
+    // Omitted axes hold the last queued reference. Rebasing them on every
+    // measured packet integrates following error into unwanted target motion.
+    const goal = { ...(this.lastSent?.head ?? source) };
     for (const axis of axes) if (pose?.[axis] !== undefined) goal[axis] = finite(pose[axis], axis);
     if (Object.keys(pose ?? {}).length === 0 || Object.keys(pose).some(axis => !axes.includes(axis))) throw Error('Choose valid head axes');
-    if (axes.some(axis => !withinLimit(goal[axis], headLimits[axis], pose?.[axis] === undefined))) throw Error('Head target exceeds Wireless limits');
+    const outside = axes.filter(axis => !withinLimit(goal[axis], headLimits[axis], pose?.[axis] === undefined));
+    if (outside.length) throw Error(`Head target exceeds Wireless limits (${outside.join(', ')}). Use Center position or Center orientation to request those axes inside the limits.`);
     const base = this.lastSent?.head ?? source; const elapsed = Math.max(0, Math.min(.05, (this.now() - (this.lastSent?.at ?? this.now())) / 1000));
-    const next = step(base, goal, elapsed, speed); const sent = this.sdk.setTarget({ head: poseMatrix(next), body_yaw: measured.bodyYawRad });
-    if (sent === true) this.lastSent = { ...this.lastSent, head: next, at: this.now(), epoch: this.epoch }; return this.#queued(sent, 'head-manual');
+    const next = step(base, goal, elapsed, speed), bodyYawRad = this.lastSent?.bodyYawRad ?? measured.bodyYawRad;
+    const sent = this.sdk.setTarget({ head: poseMatrix(next), body_yaw: bodyYawRad });
+    if (sent === true) this.lastSent = { ...this.lastSent, head: next, bodyYawRad, at: this.now(), epoch: this.epoch }; return this.#queued(sent, 'head-manual');
   }
 
   #antennas(targets) {
     const measured = this.#freshAwake(); if (!targets || Object.keys(targets).some(axis => axis !== 'left' && axis !== 'right')) throw Error('Choose valid antenna axes');
-    const goal = { ...measured.antennas }; for (const side of ['left', 'right']) if (targets[side] !== undefined) goal[side] = finite(targets[side], side);
+    const goal = { ...(this.lastSent?.antennas ?? measured.antennas) }; for (const side of ['left', 'right']) if (targets[side] !== undefined) goal[side] = finite(targets[side], side);
     if (Object.keys(targets).length === 0 || ['left', 'right'].some(side => !withinLimit(goal[side], 90, targets[side] === undefined))) throw Error('Antenna target exceeds 90 degrees');
     const base = this.lastSent?.antennas ?? measured.antennas; const elapsed = Math.max(0, Math.min(.05, (this.now() - (this.lastSent?.at ?? this.now())) / 1000));
     const distance = Math.hypot(goal.left - base.left, goal.right - base.right); const scale = distance ? Math.min(1, 120 * elapsed / distance) : 1;
@@ -216,6 +229,24 @@ export class WirelessControl {
     return { queued: stopped || held, confirmed: false, action: 'stop', controlEpoch: epoch, holdQueued: held, message: 'Stop and measured-pose hold were queued; neither is confirmed.' };
   }
 
+  suspend({ stopMotion = false } = {}) {
+    if (this.suspended) return;
+    this.suspended = true;
+    try {
+      if (!this.pendingPower && (stopMotion || this.lastSent) && this.sdk?.state === 'streaming') this.stop();
+      else { ++this.epoch; this.lastSent = null; }
+    } finally { this.measured = null; this.#emit(); }
+  }
+
+  resume() {
+    if (!this.suspended) return;
+    this.suspended = false; ++this.epoch; this.lastSent = null; this.measured = null;
+    // Background packets cannot admit a foreground write. This read requests
+    // new telemetry only; no target, Wake, reconnect or old intent is replayed.
+    try { if (this.sdk?.state === 'streaming') this.sdk.requestState(); }
+    finally { this.#emit(); }
+  }
+
   #attachVideo(sdk, video) {
     const detach = sdk.attachVideo(video);
     return typeof detach === 'function' ? detach : null;
@@ -229,7 +260,7 @@ export class WirelessControl {
   subscribePose() { return this.sdk?.subscribePose?.() === true; }
   unsubscribePose() { return this.sdk?.unsubscribePose?.() === true; }
   async close() {
-    ++this.epoch; this.lastSent = null; const sdk = this.sdk; const detachVideo = this.detachVideo; this.sdk = null; this.detachVideo = null; this.robotId = null; this.hardwareId = null; this.version = null; this.measured = null; this.uncertain = null;
+    ++this.epoch; this.lastSent = null; this.suspended = false; this.pendingPower = null; const sdk = this.sdk; const detachVideo = this.detachVideo; this.sdk = null; this.detachVideo = null; this.robotId = null; this.hardwareId = null; this.version = null; this.measured = null; this.uncertain = null;
     try { detachVideo?.(); } catch { /* teardown must continue even if a media element was removed */ }
     this.detachTelemetry?.(); this.detachTelemetry = null;
     if (sdk) { sdk.removeEventListener?.('state', this.onState); sdk.removeEventListener?.('sessionStopped', this.onSessionStopped); try { await sdk.stopSession?.(); } finally { sdk.disconnect?.(); sdk._token = null; } }
