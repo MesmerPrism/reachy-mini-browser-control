@@ -1,7 +1,25 @@
-# Status — 2026-10-30
+# Status — 2026-11-01
 
 This is an independent prototype. The following separates observed hardware
 results from offline evidence; it is not a general compatibility certification.
+
+## Bluetooth public-reply race — November 1
+
+The operator reported intermittent encrypted-provisioning timeouts after successful
+identity, PING and Wi-Fi status checks. A separate attempt stalled earlier during
+GATT service discovery; that transport failure remains distinct. A new offline
+regression reproduced a client race that can cause the public-command timeout:
+diagnostic characteristic reads suppressed a genuine asynchronous notification
+arriving during the read. This does not establish the cause of every physical
+timeout.
+
+The client now reserves the complete public-command response window for fresh
+notifications. Only after that deadline can a bounded failure-only read identify
+an exact unsupported-command or error reply. Cached keys/status and late
+notifications remain untrusted. The diagnostic adds at most one second; synchronous
+PIN handling, credential-write deadlines, generation checks and no-replay behavior
+are unchanged. No robot software, network or motor settings were changed by this
+fix. Live Bluetooth validation remains separate from offline regression evidence.
 
 ## Direct local connection — October 30
 

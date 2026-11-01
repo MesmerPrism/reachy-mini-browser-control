@@ -23,9 +23,10 @@ export const FIRST_SETUP_PROGRESS = Object.freeze({
   key_exchange: 'Checking encrypted provisioning support…', authenticate: 'Verifying the printed PIN…',
   wifi_scan: 'Reading available Wi-Fi networks…', probe: 'Checking complete synthetic Bluetooth writes…',
   wifi_connect: 'Submitting the encrypted Wi-Fi request…',
-  wifi_status_cached: 'A cached Wi-Fi status value was readable; waiting for the final notification…',
-  key_exchange_cached: 'A cached provisioning key value was readable; waiting for the final notification…',
-  public_ack: 'Bluetooth write acknowledgement received; waiting for the final Wi-Fi notification…',
+  public_diagnostic: 'No final notification arrived in time; checking for an explicit unsupported-command reply…',
+  wifi_status_cached: 'A cached Wi-Fi status value was readable, but no timely final notification arrived.',
+  key_exchange_cached: 'A cached provisioning key value was readable, but no timely final notification arrived.',
+  public_ack: 'Only a Bluetooth write acknowledgement was readable; no timely final notification arrived.',
 });
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -248,25 +249,71 @@ class FirstSetupClient {
       : command.startsWith('PIN_') ? 'authenticate' : command === 'WIFI_SCAN' ? 'wifi_scan' : command.startsWith('BROWSER_SETUP_PROBE_') ? 'probe' : 'wifi_connect';
     this.progress(stage);
     if (generation !== this.generation || !this.connected) throw fail('disconnected');
-    let timer;
+    let timer, diagnosticTimer;
     const reply = new Promise((resolve, reject) => {
       this.pending = { resolve, reject, settled: false, readAfterWrite };
-      timer = setTimeout(() => { if (generation === this.generation) this.invalidate('timeout', stageFailure('timeout', stage)); }, this.timeoutMs);
+      timer = setTimeout(() => {
+        if (generation !== this.generation || this.pending !== pending) return;
+        if (publicDiagnosticRead && pending.writeCompleted && !pending.settled) {
+          // Never read the characteristic while a timely notification can
+          // complete this command: read-induced events cannot be distinguished
+          // from notifications, so doing both loses real replies in the race.
+          void diagnoseTimeout();
+        } else finishTimeout();
+      }, this.timeoutMs);
     });
-    // Async notifications can precede write completion. Synchronous commands
-    // instead read only after the write resolves. One timeout covers write,
-    // notification or read; neither path retries an uncertain operation.
     const pending = this.pending;
+    const finishTimeout = () => {
+      if (generation === this.generation && this.pending === pending) this.invalidate('timeout', stageFailure('timeout', stage));
+    };
+    const diagnoseTimeout = async () => {
+      // The notification deadline has already elapsed. This bounded read can
+      // explain explicit unsupported/error replies, never accept cached JSON,
+      // a cached key or a late notification as current success. No write retries.
+      pending.settled = true;
+      pending.diagnosticReading = true;
+      this.progress('public_diagnostic');
+      diagnosticTimer = setTimeout(finishTimeout, Math.min(this.timeoutMs, 1000));
+      responseReads.set(responseCharacteristic, (responseReads.get(responseCharacteristic) || 0) + 1);
+      try {
+        const value = await responseCharacteristic.readValue();
+        if (generation !== this.generation || this.pending !== pending) return;
+        const valueText = decoder.decode(value);
+        if (valueText === `ECHO: ${command}`) {
+          const error = stageFailure('unsupported_provisioning', stage);
+          this.invalidate(error.code, error);
+        } else if (valueText.startsWith('ERROR:')) {
+          const error = stageFailure('rejected', stage);
+          this.invalidate(error.code, error);
+        } else if (valueText === 'OK: working') {
+          this.progress('public_ack');
+        } else {
+          try {
+            if (command === 'WIFI_STATUS') validateWifiStatus(json(valueText));
+            else keySchema(json(valueText));
+            this.progress(`${stage}_cached`);
+          } catch { /* Cached data cannot establish current success. */ }
+        }
+      } catch { /* Failed diagnostics preserve the original missing-notification outcome. */ }
+      finally {
+        const remaining = responseReads.get(responseCharacteristic) - 1;
+        if (remaining) responseReads.set(responseCharacteristic, remaining);
+        else responseReads.delete(responseCharacteristic);
+        pending.diagnosticReading = false;
+        clearTimeout(diagnosticTimer);
+        finishTimeout();
+      }
+    };
+    // Async notifications can precede write completion. Only synchronous
+    // commands read after writing. Public diagnostics wait until their full
+    // notification deadline, with at most one extra second for failure-only
+    // readback. Mutation deadlines and no-replay behavior remain unchanged.
     const write = Promise.resolve().then(async () => {
       if (generation !== this.generation) throw fail('disconnected');
       await characteristic.writeValueWithResponse(encoder.encode(command));
-      if (readAfterWrite || (publicDiagnosticRead && !pending.settled)) {
+      pending.writeCompleted = true;
+      if (readAfterWrite) {
         if (generation !== this.generation || this.pending !== pending) throw fail('disconnected');
-        // Web Bluetooth also emits characteristicvaluechanged for reads.
-        // Diagnostic reads must never turn cached data into a notification.
-        // A genuine notification overlapping this read is conservatively
-        // ignored too; it may time out but cannot produce false success.
-        pending.diagnosticReading = publicDiagnosticRead;
         responseReads.set(responseCharacteristic, (responseReads.get(responseCharacteristic) || 0) + 1);
         let value;
         try { value = await responseCharacteristic.readValue(); }
@@ -274,35 +321,11 @@ class FirstSetupClient {
           const remaining = responseReads.get(responseCharacteristic) - 1;
           if (remaining) responseReads.set(responseCharacteristic, remaining);
           else responseReads.delete(responseCharacteristic);
-          pending.diagnosticReading = false;
         }
         if (generation !== this.generation || this.pending !== pending) throw fail('disconnected');
         const reply = decoder.decode(value);
-        if (readAfterWrite) {
-          pending.settled = true;
-          pending.resolve(reply);
-        } else if (!pending.settled) {
-          // Older firmware may synchronously ECHO unknown Wi-Fi commands.
-          // Public readback diagnoses explicit failure only. Cached JSON,
-          // keys, ACKs, or unrelated ECHOs can never satisfy an async request.
-          if (reply === `ECHO: ${command}`) {
-            const error = stageFailure('unsupported_provisioning', stage);
-            this.invalidate(error.code, error);
-          } else if (reply.startsWith('ERROR:')) {
-            const error = stageFailure('rejected', stage);
-            this.invalidate(error.code, error);
-          } else if (reply === 'OK: working') {
-            this.progress('public_ack');
-          } else {
-            // Classify a readable cached value for diagnostics only. Neither
-            // schema validation nor this fixed label accepts it as a result.
-            try {
-              if (command === 'WIFI_STATUS') validateWifiStatus(json(reply));
-              else keySchema(json(reply));
-              this.progress(`${stage}_cached`);
-            } catch { /* Unknown cached values are ignored, never displayed. */ }
-          }
-        }
+        pending.settled = true;
+        pending.resolve(reply);
       }
     }).catch(() => {
       if (generation === this.generation) this.invalidate('transport');
@@ -320,7 +343,7 @@ class FirstSetupClient {
         this.invalidate(error.code === 'probe' ? 'probe' : 'protocol');
         throw error instanceof FirstSetupError ? error : fail('protocol');
       }
-    } finally { clearTimeout(timer); if (this.pending === pending) this.pending = null; }
+    } finally { clearTimeout(timer); clearTimeout(diagnosticTimer); if (this.pending === pending) this.pending = null; }
   }
   inspect() { return this.enqueue(async () => {
     await this.send('PING', (reply) => { if (reply !== 'PONG') throw fail('protocol'); });

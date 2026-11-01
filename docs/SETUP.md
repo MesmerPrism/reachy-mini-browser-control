@@ -137,6 +137,13 @@ and malformed replies remain inconclusive. PIN and credential submission appear
 only after checks pass and require explicit input. The observed factory service
 lacked the required commands. Daemon version alone does not establish Bluetooth
 capabilities. Use the chooser's named device entry to identify the intended robot.
+Public Wi-Fi status and key-exchange checks wait for a fresh notification without
+reading the response characteristic at the same time: browser reads also emit
+value-change events and can mask a genuine reply. Only after the notification
+deadline does a failure-only diagnostic read run, bounded to one additional
+second. It can identify an exact unsupported-command reply, but cached status,
+keys and late notifications never establish success. Credential submissions keep
+their existing deadline and are never replayed.
 Stock encryption protects passive observation but does not authenticate against
 active Bluetooth impersonation; use an isolated temporary network for initial setup.
 

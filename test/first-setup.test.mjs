@@ -277,7 +277,36 @@ test('exact synchronous public Wi-Fi ECHOs and read-induced events identify unsu
     assert.ok(fake.writes.every(value => ['PING', 'WIFI_STATUS', 'WIFI_KEYEX'].includes(value)));
   }
 });
-test('a genuine final notification overlapping a public diagnostic read is conservatively ignored', async () => {
+test('fast asynchronous public replies are not suppressed by diagnostic readback', async () => {
+  const robot = receiver();
+  for (const target of ['WIFI_STATUS', 'WIFI_KEYEX']) {
+    const stock = stockHandler(robot.keyExchange);
+    const fake = transport((command, response) => {
+      if (command !== target) return stock(command, response);
+      response.store('OK: working');
+      setTimeout(() => response.emit(JSON.stringify(target === 'WIFI_STATUS'
+        ? { mode: 'wlan', connected: 'lab', error: null } : robot.keyExchange)), 0);
+    }, { timeoutMs: 60 });
+    const originalRead = fake.response.readValue.bind(fake.response);
+    let publicReads = 0;
+    fake.response.readValue = async () => {
+      if (fake.writes.at(-1) === target) {
+        publicReads++;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      return originalRead();
+    };
+    await fake.client.selectAndConnect();
+    const result = await fake.client.probeCapabilities();
+    assert.equal(result.ready, true, `${target} must retain its timely notification`);
+    assert.equal(publicReads, 0, 'No diagnostic read may compete with a timely reply');
+    assert.deepEqual(fake.writes, ['PING', 'WIFI_STATUS', 'WIFI_KEYEX']);
+    assert.equal(fake.client.authenticated, false);
+    fake.client.disconnect();
+  }
+});
+
+test('a notification arriving only during post-deadline diagnostic readback cannot rescue a timeout', async () => {
   const fake = transport((_, response) => response.store('OK: working'), { timeoutMs: 15 });
   const originalRead = fake.response.readValue.bind(fake.response);
   fake.response.readValue = async () => {
@@ -289,6 +318,33 @@ test('a genuine final notification overlapping a public diagnostic read is conse
   assert.equal(fake.client.connected, false);
   assert.equal(fake.progress.at(-1), FIRST_SETUP_PROGRESS.wifi_status_cached);
 });
+test('a hung public write times out without starting a diagnostic read or retrying', async () => {
+  const stock = stockHandler(receiver().keyExchange);
+  const fake = transport((command, response) => command === 'WIFI_KEYEX'
+    ? new Promise(() => {}) : stock(command, response), { timeoutMs: 20 });
+  await fake.client.selectAndConnect();
+  await assert.rejects(fake.client.inspect(), { code: 'timeout', stage: 'key_exchange' });
+  assert.equal(fake.order.filter(item => item === 'read').length, 1);
+  assert.deepEqual(fake.writes, ['PING', 'WIFI_STATUS', 'WIFI_KEYEX']);
+  assert.equal(fake.client.connected, false);
+});
+
+test('post-timeout diagnostics stay bounded and late key notifications cannot establish success', async () => {
+  const robot = receiver();
+  const fake = transport((_, response) => response.store('OK: working'), { timeoutMs: 20 });
+  fake.response.readValue = () => {
+    fake.order.push('read');
+    queueMicrotask(() => fake.response.emit(JSON.stringify(robot.keyExchange)));
+    return new Promise(() => {});
+  };
+  await fake.client.selectAndConnect();
+  await assert.rejects(fake.client.keyExchange(), { code: 'timeout', stage: 'key_exchange' });
+  assert.deepEqual(fake.writes, ['WIFI_KEYEX']);
+  assert.equal(fake.order.filter(item => item === 'read').length, 1);
+  assert.equal(fake.client.connected, false);
+  assert.equal(fake.client.authenticated, false);
+});
+
 test('public diagnostic readback rejects synchronous errors safely, but unrelated ECHOs and ACKs prove nothing', async () => {
   for (const cached of ['ERROR: reflected-private-value', 'ECHO: WIFI_KEYEX', 'ECHO: WIFI_STATUS trailing', 'OK: working']) {
     const fake = transport((_, response) => response.store(cached), { timeoutMs: 15 });
