@@ -86,11 +86,19 @@ test('real SDK wake/sleep completion and volume replies resolve candidate acknow
   assert.equal((await h.control.command({ action: 'sleep' })).confirmed, true); await h.control.close();
 });
 test('version mismatch, absent identity and interrupted identity handshake close candidate', async () => {
-  for (const options of [{ version: '1.10.0' }, { version: '1.11.1' }, { identity: null }, { failure: 'identity-disconnect' }]) {
-    const h = harness(options); await assert.rejects(h.control.connect(), /not supported/);
+  for (const [options, reason] of [[{ version: '1.10.0' }, /version.*changed/i], [{ version: '1.11.1' }, /version 1\.11\.1.*not supported/i], [{ identity: null }, /did not provide.*identity/i], [{ failure: 'identity-disconnect' }, /connection ended.*verification/i]]) {
+    const h = harness(options); await assert.rejects(h.control.connect(), reason);
     assert.equal(h.control.sdk, null); assert.equal(h.sdk.state, 'disconnected'); assert.equal(h.sdk._dc, null);
     assert.ok(h.sent.every(c => ['get_hardware_id', 'get_version'].includes(c.type)));
   }
+});
+
+test('missing version reply is not misreported as an unsupported daemon', async () => {
+  const h = harness({ version: null });
+  await assert.rejects(h.control.connect(), /did not provide.*daemon version/i);
+  assert.equal(h.control.snapshot().ready, false);
+  assert.equal(h.control.sdk, null);
+  assert.ok(h.sent.every(c => ['get_hardware_id', 'get_version'].includes(c.type)));
 });
 test('failed synthetic signaling/session setup never sends robot writes or retains session', async () => {
   for (const failure of ['signaling', 'session']) {

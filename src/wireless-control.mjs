@@ -132,7 +132,11 @@ export class WirelessControl {
       let hardwareId, version;
       try { [hardwareId, version] = await Promise.race([Promise.all([sdk.getHardwareId(), sdk.getVersion()]), identityDeadline]); }
       finally { clearTimeout(identityTimer); }
-      if (!hardwareId || !supportsWirelessVersion(version) || this.expectedVersion && version !== this.expectedVersion) throw Error(`Wireless robot identity or daemon version is not supported. Supported versions: ${WIRELESS_VERSION_LABEL}.`);
+      if (sdk.state !== 'streaming') throw Error('Wireless connection ended during identity and version verification. Start a new connection explicitly.');
+      if (typeof hardwareId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(hardwareId)) throw Error('Reachy did not provide a valid hardware identity. Control remains disabled; check the robot connection and reconnect explicitly.');
+      if (typeof version !== 'string' || !/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(version)) throw Error('Reachy did not provide a valid daemon version. Control remains disabled; check the robot connection and reconnect explicitly.');
+      if (!supportsWirelessVersion(version)) throw Error(`Reachy reported daemon version ${version}, which is not supported. Supported versions: ${WIRELESS_VERSION_LABEL}.`);
+      if (this.expectedVersion && version !== this.expectedVersion) throw Error('The daemon version changed since the robot was checked. Check the current robot status before reconnecting.');
       if (this.expectedHardwareId && hardwareId !== this.expectedHardwareId) throw Error('Selected robot identity does not match the robot you checked. Check the address or choose the intended robot.');
       this.robotId = selected; this.hardwareId = hardwareId; this.version = version; sdk.requestState(); this.#emit();
       report('connected');

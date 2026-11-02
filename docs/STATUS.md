@@ -1,7 +1,28 @@
-# Status — 2026-11-01
+# Status — 2026-11-02
 
 This is an independent prototype. The following separates observed hardware
 results from offline evidence; it is not a general compatibility certification.
+
+## Local connection verification errors — November 2
+
+After successful Bluetooth network provisioning, the operator saw camera video
+but no admitted controls, followed by a generic unsupported identity/version
+message. Fresh HTTP status and hardware-ID queries confirmed the expected robot,
+Wireless daemon 1.10.0, a ready backend and disabled motors. A native LAN WebRTC
+probe returned identity, version and complete state; a second read-only probe
+received 40 complete state replies during 20 seconds of normal polling. Replaying
+the captured replies through SDK 1.8.0 and the controller admitted fresh asleep
+state. No motor, gain, firmware, network or mode settings were changed.
+
+Regression tests reproduced the misleading error: SDK teardown resolves pending
+identity/version queries with null, which the client previously classified with
+unsupported versions. The client now distinguishes connection loss, missing or
+malformed identity, missing or malformed version, a changed expected version,
+and an actual unsupported version. Actual unsupported numeric versions are shown;
+all failures still close the session and inhibit commands. This corrects the
+diagnosis, not the still-unproven cause of the operator's browser disconnect.
+Live browser reconnection remains to be checked separately from the successful
+native connection and captured-reply tests.
 
 ## Bluetooth public-reply race — November 1
 
