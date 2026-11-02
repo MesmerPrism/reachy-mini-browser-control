@@ -18,6 +18,34 @@ const matrix = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
 function ready(control) { control.sdk.push({ head: matrix, antennas: [0,0], body_yaw: 0, motor_mode: 'enabled', is_move_running: false }); }
 const target = (control, body) => ({ ...body, epoch: control.snapshot().controlEpoch });
 
+test('transport interruption fences old targets and requires new feedback after same-session recovery', async () => {
+  const control = new WirelessControl({ReachyMini:FakeSdk}); await control.connect(); ready(control);
+  const sdk=control.sdk, epoch=control.snapshot().controlEpoch;
+  sdk.transportReady=false; sdk.connectionIssue={code:'ice-interrupted',message:'Connection interrupted'};
+  sdk.dispatchEvent(new CustomEvent('transportState'));
+  assert.equal(control.snapshot().ready,false); assert.equal(control.snapshot().measured,null);
+  await assert.rejects(control.command({action:'wake'}),/Fresh/);
+  ready(control); assert.equal(control.snapshot().ready,false,'packets during a gap cannot admit commands');
+  sdk.transportReady=true;sdk.connectionIssue=null;sdk.dispatchEvent(new CustomEvent('transportState'));
+  assert.equal(control.snapshot().ready,false,'pre-recovery feedback cannot admit commands');
+  ready(control);assert.equal(control.snapshot().ready,true);
+  await assert.rejects(control.command({action:'head-manual',pose:{yaw:1},epoch}),/expired/);
+  assert.deepEqual(sdk.sent,[]);await control.close();
+});
+
+test('interrupted power command stays locked after transport recovery and is never replayed', async () => {
+  const control=new WirelessControl({ReachyMini:FakeSdk});await control.connect();ready(control);
+  const sdk=control.sdk;let finish;
+  sdk.wakeUp=()=>{sdk.sent.push(['wake']);return new Promise(resolve=>finish=resolve);};
+  const pending=control.command({action:'wake'});
+  sdk.transportReady=false;sdk.connectionIssue={code:'ice-interrupted',message:'Connection interrupted'};
+  sdk.dispatchEvent(new CustomEvent('transportState'));
+  sdk.transportReady=true;sdk.connectionIssue=null;sdk.dispatchEvent(new CustomEvent('transportState'));
+  finish();await pending;ready(control);
+  assert.ok(control.snapshot().uncertain);assert.equal(control.snapshot().ready,false);
+  assert.deepEqual(sdk.sent,[['wake']]);await control.close();
+});
+
 test('connect pins the session daemon identity and never retains token state', async () => {
   let time = 0; const control = new WirelessControl({ ReachyMini: FakeSdk, now: () => time });
   const result = await control.connect({ token: 'ephemeral-token' }); ready(control);

@@ -57,7 +57,7 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
       flight.release(); if (gen === generation.current) setBusy(mutationFlight.current.busy);
     }
   };
-  const command = async body => { const gen = generation.current; try { await performAction(body); } catch (error) { if (gen === generation.current) setError(error.message); } };
+  const command = async body => { const gen = generation.current; try { await performAction(body); } catch (error) { if (gen === generation.current) setError(control.current?.snapshot().connectionIssue?.message || error.message); } };
   const connect = async isDemo => {
     const captured = token.trim(); setToken(''); setBusy(true); setError('');
     const disconnecting = disconnect(); const gen = ++generation.current; await disconnecting;
@@ -69,10 +69,16 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
       const local = !isDemo && connectionMethod === 'local';
       const SDK = local ? createLocalWirelessSDK(ReachyMini, { host: localHost }) : ReachyMini;
       next = new WirelessControl({ ReachyMini: SDK, connectionTimeoutMs: local ? 15000 : 5000, expectedVersion: isDemo ? '1.10.0' : expectedVersion, expectedHardwareId: isDemo ? null : currentEvidence?.expectedHardwareId || currentEvidence?.hardwareId }); control.current = next; setDemo(isDemo);
-      let wasConnected = false;
+      let wasConnected = false, lastConnectionIssue = null;
       next.subscribe(value => {
         if (control.current !== next) return;
         setStatus(value);
+        if (value.connectionIssue?.message) setError(value.connectionIssue.message);
+        else if (lastConnectionIssue) {
+          if (!value.uncertain) setError('');
+          setMessage('Local connection recovered; waiting for fresh telemetry and a new control input.');
+        }
+        lastConnectionIssue = value.connectionIssue;
         if (value.connected) wasConnected = true;
         else if (wasConnected) {
           halt(); setConnectionProgress('failed');
@@ -98,7 +104,7 @@ export default function WirelessPanel({ initialDemo = false, expectedVersion, ev
         if (!next.snapshot().connected) throw Error('The robot session ended during setup. Start a new connection explicitly.');
       }
       setMessage(isDemo ? 'Simulation: no robot, microphone or camera connection' : 'Connected; press Wake explicitly to move Reachy');
-    } catch (error) { await next?.close(); if(gen===generation.current){if(control.current===next)control.current=null;setConnectionProgress('failed');setError(error.message);setStatus({connected:false});} } finally { if (gen === generation.current) setBusy(false); }
+    } catch (error) { const issue = next?.snapshot().connectionIssue; await next?.close(); if(gen===generation.current){if(control.current===next)control.current=null;setConnectionProgress('failed');setError(issue?.message || error.message);setStatus({connected:false,connectionIssue:issue});} } finally { if (gen === generation.current) setBusy(false); }
   };
   useEffect(() => {
     const timer = setInterval(async () => {

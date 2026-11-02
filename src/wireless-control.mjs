@@ -65,7 +65,15 @@ export class WirelessControl {
     this.expectedHardwareId = expectedHardwareId;
     this.sdk = null; this.robotId = null; this.hardwareId = null; this.version = null;
     this.measured = null; this.lastSent = null; this.epoch = 0; this.uncertain = null; this.suspended = false; this.pendingPower = null; this.listeners = new Set(); this.detachVideo = null;
-    this.onState = event => { if (this.sdk?.state === 'streaming') this.#recordState(event?.detail ?? this.sdk?.robotState); };
+    this.connectionIssue = null;
+    this.onState = event => { if (this.sdk?.state === 'streaming' && (this.sdk.transportReady !== false || this.sdk.connectionIssue?.code === 'robot-error')) this.#recordState(event?.detail ?? this.sdk?.robotState); };
+    this.onTransportState = () => {
+      this.connectionIssue = this.sdk?.connectionIssue ?? null;
+      this.measured = null; this.lastSent = null; ++this.epoch;
+      if (this.pendingPower) this.uncertain = 'The connection was interrupted during a power command. Its outcome must be checked before further control.';
+      else if (this.connectionIssue?.code === 'robot-error') this.uncertain = this.connectionIssue.message;
+      this.#emit();
+    };
     this.onSessionStopped = () => { this.measured = null; this.lastSent = null; ++this.epoch; this.#emit(); };
   }
 
@@ -95,21 +103,22 @@ export class WirelessControl {
     const age=this.measured ? this.now()-this.measured.receivedAt : Infinity;
     const fresh = age>=0 && age<=1500;
     const connected = this.sdk?.state === 'streaming';
-    return { connected, suspended: this.suspended, ready: connected && !this.suspended && !this.pendingPower && !this.uncertain && !!this.hardwareId && supportsWirelessVersion(this.version) && (!this.expectedVersion || this.version === this.expectedVersion) && fresh,
+    return { connected, suspended: this.suspended, ready: connected && this.sdk?.transportReady !== false && !this.suspended && !this.pendingPower && !this.uncertain && !!this.hardwareId && supportsWirelessVersion(this.version) && (!this.expectedVersion || this.version === this.expectedVersion) && fresh,
       awake: fresh && this.measured.awake, measured: this.measured ? { ...this.measured, head: { ...this.measured.head }, antennas: { ...this.measured.antennas } } : null,
-      hardwareId: this.hardwareId, version: this.version, uncertain: this.uncertain, controlEpoch: this.epoch, ...this.capabilities,
+      hardwareId: this.hardwareId, version: this.version, uncertain: this.uncertain, connectionIssue: this.connectionIssue ?? this.sdk?.connectionIssue ?? null, controlEpoch: this.epoch, ...this.capabilities,
       message: 'Wireless commands are queued only; application and Stop hold are unconfirmed.' };
   }
 
   async connect({ token, robotId, pickRobot, video, onProgress } = {}) {
     const report = phase => { try { onProgress?.(phase); } catch { /* UI observers cannot alter connection admission. */ } };
     await this.close();
+    this.connectionIssue = null;
     const sdk = new this.ReachyMini({ autoStartFromUrl: false, appName: 'Reachy Mini Browser Control' });
     this.detachTelemetry = installWirelessTelemetryGuard(sdk, { now: this.now, onInvalid: () => {
       if (this.sdk !== sdk) return;
       this.measured = null; this.lastSent = null; ++this.epoch; this.#emit();
     } });
-    this.sdk = sdk; sdk.addEventListener?.('state', this.onState); sdk.addEventListener?.('sessionStopped', this.onSessionStopped);
+    this.sdk = sdk; sdk.addEventListener?.('state', this.onState); sdk.addEventListener?.('sessionStopped', this.onSessionStopped); sdk.addEventListener?.('transportState', this.onTransportState);
     try {
       const authenticated = token ? false : (typeof sdk.authenticate === 'function' ? await sdk.authenticate() : false);
       if (!token && !authenticated) throw Error('Sign in to Hugging Face before selecting a robot');
@@ -141,7 +150,10 @@ export class WirelessControl {
       this.robotId = selected; this.hardwareId = hardwareId; this.version = version; sdk.requestState(); this.#emit();
       report('connected');
       return { robotId: selected, hardwareId, version, limitedTransport: true };
-    } catch (error) { report('failed'); await this.close(); throw error; }
+    } catch (error) {
+      const issue = sdk.connectionIssue ?? this.connectionIssue;
+      report('failed'); await this.close(); throw issue ? Error(issue.message) : error;
+    }
   }
 
   #robots(sdk) {
@@ -264,10 +276,11 @@ export class WirelessControl {
   subscribePose() { return this.sdk?.subscribePose?.() === true; }
   unsubscribePose() { return this.sdk?.unsubscribePose?.() === true; }
   async close() {
+    this.connectionIssue = this.sdk?.connectionIssue ?? this.connectionIssue;
     ++this.epoch; this.lastSent = null; this.suspended = false; this.pendingPower = null; const sdk = this.sdk; const detachVideo = this.detachVideo; this.sdk = null; this.detachVideo = null; this.robotId = null; this.hardwareId = null; this.version = null; this.measured = null; this.uncertain = null;
     try { detachVideo?.(); } catch { /* teardown must continue even if a media element was removed */ }
     this.detachTelemetry?.(); this.detachTelemetry = null;
-    if (sdk) { sdk.removeEventListener?.('state', this.onState); sdk.removeEventListener?.('sessionStopped', this.onSessionStopped); try { await sdk.stopSession?.(); } finally { sdk.disconnect?.(); sdk._token = null; } }
+    if (sdk) { sdk.removeEventListener?.('state', this.onState); sdk.removeEventListener?.('sessionStopped', this.onSessionStopped); sdk.removeEventListener?.('transportState', this.onTransportState); try { await sdk.stopSession?.(); } finally { sdk.disconnect?.(); sdk._token = null; } }
     this.#emit();
   }
 }

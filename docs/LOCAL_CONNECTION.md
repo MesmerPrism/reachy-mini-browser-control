@@ -24,6 +24,14 @@ malformed frames close the session. WebRTC errors also clear local admission.
 Local ICE does not use the SDK's default external STUN service. LAN access does
 not authenticate an owner through Hugging Face; use it on a trusted network.
 
+Temporary ICE disconnection pauses commands immediately but keeps the existing
+peer for a bounded three-second recovery window. Recovery requires fresh
+telemetry and new input; old targets are discarded. There is no automatic new
+session, ICE restart or mutation replay. Terminal failures close the session and
+retain their cause. A power command interrupted in flight remains locked even
+after transport recovery. Daemon command errors retain telemetry while locking
+control, and show their bounded reason in the tab.
+
 Browser local-network permission, mixed-content handling and network isolation
 still apply. Support differs by browser. HTTP REST CORS and the local WebSocket
 handshake are separate: a blocked optional HTTP check does not prove that local

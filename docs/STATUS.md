@@ -3,6 +3,32 @@
 This is an independent prototype. The following separates observed hardware
 results from offline evidence; it is not a general compatibility certification.
 
+## Bounded recovery of temporary local ICE loss — November 2
+
+The operator subsequently reached admitted controls and pressed Wake before the
+browser disconnected. Fresh daemon reads showed enabled motors, a ready backend
+and no backend error. The journal showed the client sending endSession; it did
+not retain the browser-side trigger. A read-only awake WebRTC run remained
+connected for the polling window and returned 34 complete state replies. No power,
+movement, gain, mode-correction or robot software changes were made by these checks.
+
+Fault injection reproduced a separate client weakness: the local adapter treated
+every SDK error as terminal, including temporary ICE disconnection and daemon
+command errors. It now pauses command admission immediately for temporary ICE
+loss and allows at most three seconds for that same peer to recover. Repeated
+warnings do not renew the deadline. Recovery discards the old measured baseline
+and queued intent, requests fresh state, and requires a new control input. It
+creates no replacement session, performs no ICE restart and replays no mutation.
+Any power command interrupted in flight remains outcome-locked, even if a later
+completion arrives. Terminal failures still close the session. Robot command
+errors retain telemetry for diagnosis while locking control.
+
+Closing causes are retained separately for ICE, signaling, setup deadlines and
+robot errors; bounded daemon error text is shown in the tab but excluded from
+copied diagnostic summaries. Offline tests qualify these paths, not the unknown
+trigger of the operator's original browser drop. A live browser retry is still
+needed to determine whether temporary ICE loss was the trigger.
+
 ## Local connection verification errors — November 2
 
 After successful Bluetooth network provisioning, the operator saw camera video

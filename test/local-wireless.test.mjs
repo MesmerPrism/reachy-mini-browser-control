@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ReachyMini } from '@pollen-robotics/reachy-mini-sdk';
 import { createLocalWirelessSDK, localSignalingUrl } from '../src/local-wireless.mjs';
 
-function harness({ welcome = true, timeoutMs = 100, sendFails = false } = {}) {
+function harness({ welcome = true, timeoutMs = 100, sendFails = false, iceRecoveryMs = 30 } = {}) {
   const sent = []; let socket;
   class Socket {
     readyState = 0; bufferedAmount = 0;
@@ -15,7 +15,7 @@ function harness({ welcome = true, timeoutMs = 100, sendFails = false } = {}) {
     send(text) { if(sendFails)throw Error('fixture closed socket'); const value = JSON.parse(text); sent.push(value); if (value.type === 'list') queueMicrotask(() => this.message({ type: 'list', producers: [{ id: 'fixture-robot', meta: { name: 'Fixture' } }] })); }
     close() { this.readyState = 3; this.onclose?.(); }
   }
-  const SDK = createLocalWirelessSDK(ReachyMini, { host: 'robot.local', WebSocketImpl: Socket, timeoutMs });
+  const SDK = createLocalWirelessSDK(ReachyMini, { host: 'robot.local', WebSocketImpl: Socket, timeoutMs, iceRecoveryMs });
   const sdk = new SDK({ appName: 'Local fixture' });
   return { sdk, sent, get socket() { return socket; } };
 }
@@ -25,6 +25,59 @@ test('local signaling accepts only selected private IP or local hostname at the 
   const address = [192,168,1,2].join('.');
   assert.equal(localSignalingUrl(address), `ws://${address}:8443`);
   for (const host of ['example.com','127.0.0.1','https://robot.local','robot.local:8000','robot.local/path',[192,168,'001',2].join('.')]) assert.throws(() => localSignalingUrl(host), /private|local/i);
+});
+
+function peerFor(h) {
+  const peer = new EventTarget();
+  peer.iceConnectionState = 'connected'; peer.close = () => { peer.closed = true; };
+  peer.setConfiguration = () => {};
+  h.sdk._pc = peer; h.sdk._state = 'streaming';
+  return peer;
+}
+
+test('temporary ICE loss keeps the same session but blocks transport until recovery', async () => {
+  const h = harness(); await h.sdk.connect(); const peer = peerFor(h);
+  // Emit the installed SDK's audited transient-ICE error on the same peer.
+  const sentBefore = h.sent.length;
+  peer.iceConnectionState = 'disconnected';
+  h.sdk._emit('error', { source: 'webrtc', error: Error('ICE disconnected') });
+  assert.equal(h.sdk.state, 'streaming'); assert.equal(h.sdk.transportReady, false);
+  assert.equal(h.socket.readyState, 1);
+  peer.iceConnectionState = 'connected'; peer.dispatchEvent(new Event('iceconnectionstatechange'));
+  assert.equal(h.sdk.transportReady, true); assert.equal(h.sdk.connectionIssue, null);
+  assert.equal(h.sdk._pc, peer);
+  assert.equal(h.sent.length, sentBefore, 'recovery sends no new signaling or session');
+  h.sdk.disconnect();
+});
+
+test('unrecovered ICE loss has one bounded deadline and retains the closing cause', async () => {
+  const h = harness({iceRecoveryMs:15}); await h.sdk.connect(); const peer = peerFor(h);
+  peer.iceConnectionState = 'disconnected';
+  h.sdk._emit('error', { source: 'webrtc', error: Error('ICE disconnected') });
+  await new Promise(resolve => setTimeout(resolve, 35));
+  assert.equal(h.sdk.state, 'disconnected'); assert.equal(h.socket.readyState, 3);
+  assert.equal(h.sdk.connectionIssue.code, 'ice-timeout');
+});
+
+test('robot errors inhibit control without disguising the live session as disconnected', async () => {
+  const h = harness(); await h.sdk.connect(); peerFor(h);
+  h.sdk._handleRobotMessage({error:'fixture daemon rejection'});
+  assert.equal(h.sdk.state, 'streaming'); assert.equal(h.sdk.transportReady, false);
+  assert.equal(h.sdk.connectionIssue.code, 'robot-error');
+  assert.match(h.sdk.connectionIssue.message,/fixture daemon rejection/);
+  assert.equal(h.socket.readyState,1); h.sdk.disconnect();
+});
+
+test('repeated ICE warnings cannot extend recovery and late recovery cannot revive a closed session', async t => {
+  const h=harness({iceRecoveryMs:20});await h.sdk.connect();const peer=peerFor(h);
+  t.mock.timers.enable({apis:['setTimeout']});
+  peer.iceConnectionState='disconnected';
+  const warning=()=>h.sdk._emit('error',{source:'webrtc',error:Error('ICE disconnected')});
+  warning();t.mock.timers.tick(15);warning();t.mock.timers.tick(5);
+  assert.equal(h.sdk.state,'disconnected');assert.equal(h.sdk.connectionIssue.code,'ice-timeout');
+  peer.iceConnectionState='connected';peer.dispatchEvent(new Event('iceconnectionstatechange'));
+  assert.equal(h.sdk.state,'disconnected');assert.equal(h.sdk.transportReady,false);
+  assert.deepEqual(h.sent.map(x=>x.type),['setPeerStatus','list']);
 });
 
 test('local discovery uses no HF token or HTTP, and never requests a session or motor command', async () => {
